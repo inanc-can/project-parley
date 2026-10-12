@@ -1,0 +1,47 @@
+[project]
+name = "parley"
+version = "0.1.0"
+description = "Research platform for AI agents negotiating and playing games"
+authors = [
+    { name = "İnanç CAN", email = "ge82ced@mytum.de" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.143.0",
+    "litellm>=1.105.0",
+    "pydantic>=2.14.0",
+    "python-dotenv>=1.2.4",
+    "sse-starlette>=3.5.0",
+    "typer>=0.27.3",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.3,<0.12.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.0",
+]
+
+[project.optional-dependencies]
+analysis = ["pandas", "numpy", "matplotlib", "jupyter"]
+
+[project.scripts]
+parley = "parley.cli:app"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]  # resilient to macOS hiding the editable-install .pth file
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
