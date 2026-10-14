@@ -68,11 +68,11 @@ export function RoomClient() {
   if (!room) return <p className="text-muted-foreground p-8">{error ?? "Loading room…"}</p>;
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8">
-      <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10">
+      <header className="flex flex-col gap-4 border-b border-line pb-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-muted-foreground text-sm">Room {room.id}</p>
-          <h1 className="text-2xl font-semibold tracking-tight">{room.game.spec.title}</h1>
+          <p className="label-mono">Room {room.id}</p>
+          <h1 className="display-title mt-2 text-3xl sm:text-4xl">{room.game.spec.title}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {room.participants.map((p) => (
@@ -101,22 +101,22 @@ export function RoomClient() {
       </header>
 
       <Tabs value={tab} onValueChange={(v) => setTab(String(v))}>
-        <TabsList>
-          <TabsTrigger value="game">1 · Game{room.game.locked ? " ✓" : ""}</TabsTrigger>
-          <TabsTrigger value="seat">2 · My agent{room.me.ready ? " ✓" : ""}</TabsTrigger>
-          <TabsTrigger value="match">3 · Match{room.running.length ? " ●" : ""}</TabsTrigger>
-          <TabsTrigger value="results">Results</TabsTrigger>
+        <TabsList variant="line" className="h-10 w-full justify-start gap-6 rounded-none border-b border-line p-0">
+          <TabsTrigger className="flex-none px-0" value="game">1 · Game{room.game.locked ? " ✓" : ""}</TabsTrigger>
+          <TabsTrigger className="flex-none px-0" value="seat">2 · My agent{room.me.ready ? " ✓" : ""}</TabsTrigger>
+          <TabsTrigger className="flex-none px-0" value="match">3 · Match{room.running.length ? " ●" : ""}</TabsTrigger>
+          <TabsTrigger className="flex-none px-0" value="results">Results</TabsTrigger>
         </TabsList>
-        <TabsContent value="game" className="mt-4">
+        <TabsContent value="game" className="mt-6">
           <GameEditor room={room} onChange={refresh} />
         </TabsContent>
-        <TabsContent value="seat" className="mt-4">
+        <TabsContent value="seat" className="mt-6">
           <SeatEditor room={room} onChange={refresh} />
         </TabsContent>
-        <TabsContent value="match" className="mt-4">
+        <TabsContent value="match" className="mt-6">
           <MatchPanel room={room} onChange={refresh} onShowResults={() => setTab("results")} />
         </TabsContent>
-        <TabsContent value="results" className="mt-4">
+        <TabsContent value="results" className="mt-6">
           <ResultsPanel room={room} />
         </TabsContent>
       </Tabs>

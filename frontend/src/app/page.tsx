@@ -29,10 +29,11 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-6 px-4 py-16">
+    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-8 px-4 py-20">
       <div>
-        <h1 className="text-3xl font-semibold tracking-tight">Parley</h1>
-        <p className="text-muted-foreground mt-2">
+        <p className="label-mono text-brand">Research</p>
+        <h1 className="display-title mt-3 text-4xl sm:text-5xl">Parley</h1>
+        <p className="text-muted-foreground mt-4 max-w-[34rem] text-base leading-relaxed">
           Agree on a game together, build your agent in private, and watch the agents negotiate.
         </p>
       </div>
