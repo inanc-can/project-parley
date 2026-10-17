@@ -164,7 +164,7 @@ export function SeatEditor({ room, onChange }: { room: RoomView; onChange: () =>
                 )
               }
             >
-              {room.me.ready ? "Not ready" : "I'm ready"}
+              {room.me.ready ? "Undo ready" : "I'm ready"}
             </Button>
           </div>
           {!room.game.locked && <p className="text-muted-foreground text-sm">Agree on the game first to get ready.</p>}

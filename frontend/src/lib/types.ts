@@ -81,6 +81,7 @@ export type Outcome = {
   deal: { terms: Record<string, number>; source: "formal" | "judge_extracted"; confidence: number | null } | null;
   payoffs: Record<string, number>;
   forfeited_by: string | null;
+  forfeit_attempts: { error: string; output: string }[];
   metrics: Record<string, number>;
   judge: {
     summary?: string;
@@ -97,10 +98,13 @@ export type Episode = {
   seats: Record<string, (Seat & { strategy_sha256?: string }) | null>;
   turns: Turn[];
   outcome: Outcome;
+  attempts: number;
+  error: string | null; // every attempt failed; outcome.end_reason is "error"
 };
 
 export type MatchSummary = {
   episodes: number;
+  failed: number;
   mean_payoff_by_seat: Record<string, number>;
   end_reasons: Record<string, number>;
   metrics: Record<string, number>;
@@ -111,8 +115,10 @@ export type MatchResult = { status: string | null; summary: MatchSummary | Recor
 export type MatchListItem = { id: string; status: string; created_at: string; title: string; runs: number };
 
 export type MatchEvent =
-  | { type: "episode_start"; index: number; assignment: Record<string, string> }
+  | { type: "match_start"; match_id: string; runs: number }
+  | { type: "episode_start"; index: number; assignment: Record<string, string>; attempt: number }
   | { type: "turn"; index: number; turn: Turn }
-  | { type: "episode_end"; index: number; outcome: Outcome }
+  | { type: "episode_retry"; index: number; attempt: number; error: string }
+  | { type: "episode_end"; index: number; outcome: Outcome; error: string | null }
   | { type: "match_end"; match_id: string }
   | { type: "error"; message: string };

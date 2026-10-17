@@ -27,6 +27,9 @@ class MatchConfig(BaseModel):
     seed: int = 0
     judge_model: str | None = None
     parallel: int = 4  # episodes played at once
+    # Tries per episode before it is recorded as failed. With the LLM cache on, a retry
+    # replays the calls that succeeded and only repeats the one that failed.
+    episode_attempts: int = Field(3, ge=1)
 
 
 class EpisodeRecord(BaseModel):
@@ -41,10 +44,23 @@ class EpisodeRecord(BaseModel):
     turns: list[Turn]
     outcome: Outcome
     reference: dict[str, Any] = Field(default_factory=dict)
+    attempts: int = 1
+    error: str | None = None  # set when every attempt failed (outcome.end_reason == "error")
 
 
 Event = dict[str, Any]
 OnEvent = Callable[[Event], Awaitable[None]] | None
+OnRecord = Callable[["EpisodeRecord"], None] | None
+
+
+def is_setup_error(e: Exception) -> bool:
+    """Bad key, gated or unknown model: these fail every episode the same way, so they stop
+    the match instead of being retried."""
+    import litellm  # slow import; only reached once a call has failed
+
+    return isinstance(
+        e, litellm.AuthenticationError | litellm.NotFoundError | litellm.PermissionDeniedError
+    )
 
 
 def assignment_for(spec: GameSpec, seat_ids: list[str], index: int, swap: bool) -> dict[str, str]:
@@ -57,8 +73,14 @@ def assignment_for(spec: GameSpec, seat_ids: list[str], index: int, swap: bool) 
 
 
 async def run_match(
-    cfg: MatchConfig, client: LLMClient, match_id: str | None = None, on_event: OnEvent = None
+    cfg: MatchConfig,
+    client: LLMClient,
+    match_id: str | None = None,
+    on_event: OnEvent = None,
+    on_record: OnRecord = None,
 ) -> list[EpisodeRecord]:
+    """Play every episode. A failing episode is retried, then recorded as failed; the others
+    carry on. on_record gets each record as soon as its episode finishes."""
     match_id = match_id or uuid.uuid4().hex[:12]
     spec = cfg.spec
     runs = cfg.runs or spec.runs
@@ -75,19 +97,39 @@ async def run_match(
         async with sem:
             seed = cfg.seed * 100_000 + index
             assignment = assignment_for(spec, seat_ids, index, cfg.swap_roles)
-            agents = {
-                role: build_agent(cfg.seats[sid], client, seed) for role, sid in assignment.items()
-            }
-            await emit({"type": "episode_start", "index": index, "assignment": assignment})
 
             async def on_turn(turn: Turn):
                 public = turn.model_dump(include={"role", "message", "action", "round", "phase"})
                 await emit({"type": "turn", "index": index, "turn": public})
 
-            turns, outcome = await run_episode(spec, agents, on_turn)
-            if judge:
-                outcome = apply_judgment(spec, outcome, await judge.assess(spec, turns, outcome))
-            outcome.metrics = episode_metrics(spec, turns, outcome, refs)
+            error = None
+            for attempt in range(1, cfg.episode_attempts + 1):
+                agents = {
+                    role: build_agent(cfg.seats[sid], client, seed)
+                    for role, sid in assignment.items()
+                }
+                start = {"type": "episode_start", "index": index, "assignment": assignment}
+                await emit({**start, "attempt": attempt})
+                try:
+                    turns, outcome = await run_episode(spec, agents, on_turn)
+                    error = None
+                    break
+                except Exception as e:  # provider errors that outlived the client's retries
+                    if is_setup_error(e):
+                        raise
+                    error = f"{type(e).__name__}: {e}"
+                    retry = {"type": "episode_retry", "index": index, "attempt": attempt}
+                    await emit({**retry, "error": error})
+            if error:
+                turns, outcome = [], Outcome(end_reason="error")
+            else:
+                if judge:
+                    try:
+                        judgment = await judge.assess(spec, turns, outcome)
+                    except Exception as e:  # keep the episode; its judgment is just missing
+                        judgment = {"error": f"judge failed: {type(e).__name__}: {e}"}
+                    outcome = apply_judgment(spec, outcome, judgment)
+                outcome.metrics = episode_metrics(spec, turns, outcome, refs)
             record = EpisodeRecord(
                 match_id=match_id,
                 index=index,
@@ -100,10 +142,16 @@ async def run_match(
                 turns=turns,
                 outcome=outcome,
                 reference=refs,
+                attempts=attempt,
+                error=error,
             )
-            await emit({"type": "episode_end", "index": index, "outcome": outcome.model_dump()})
+            if on_record:
+                on_record(record)
+            end = {"type": "episode_end", "index": index, "outcome": outcome.model_dump()}
+            await emit({**end, "error": error})
             return record
 
+    await emit({"type": "match_start", "match_id": match_id, "runs": runs})
     records = await asyncio.gather(*(one(i) for i in range(runs)))
     await emit({"type": "match_end", "match_id": match_id})
     return list(records)

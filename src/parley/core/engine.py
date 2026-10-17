@@ -52,19 +52,30 @@ def _view(spec: GameSpec, role: str, transcript: list[Turn], **kw) -> RoleView:
     )
 
 
-async def _get_turn(agent: Agent, view: RoleView, validate: Callable[[Turn], Turn]) -> Turn | None:
-    """Ask the agent for a turn, re-prompting with the error up to MAX_RETRIES times."""
-    feedback = None
+Failures = list[dict[str, str]]
+
+
+async def _get_turn(
+    agent: Agent, view: RoleView, validate: Callable[[Turn], Turn]
+) -> tuple[Turn | None, Failures]:
+    """Ask the agent for a turn, re-prompting with the error up to MAX_RETRIES times.
+    Returns the turn (None if every reply was rejected) and the rejected replies."""
+    feedback, failures = None, []
     for attempt in range(MAX_RETRIES + 1):
+        turn = None
         try:
             turn = await agent.act(view, feedback)
             turn.role = view.role
             turn = validate(turn)
             turn.retries = attempt
-            return turn
+            return turn, failures
         except (TurnError, InvalidTurn, InvalidTerms) as e:
-            feedback = str(e)
-    return None
+            raw = getattr(e, "raw_output", None) or (turn.raw_output if turn else None)
+            failures.append({"error": str(e), "output": raw or ""})
+            # The attempt number keeps each re-prompt distinct, so a cached bad reply
+            # isn't simply served again.
+            feedback = f"{e} (attempt {attempt + 2} of {MAX_RETRIES + 1})"
+    return None, failures
 
 
 # --- Alternating -------------------------------------------------------------
@@ -109,9 +120,9 @@ async def _alternating(
             standing_offer=standing,
             messages_left=p.max_messages - n,
         )
-        turn = await _get_turn(agents[role], view, validate)
+        turn, failures = await _get_turn(agents[role], view, validate)
         if turn is None:
-            return transcript, no_deal("forfeit", forfeited_by=role)
+            return transcript, no_deal("forfeit", forfeited_by=role, forfeit_attempts=failures)
         transcript.append(turn)
         if on_turn:
             await on_turn(turn)
@@ -159,10 +170,11 @@ async def _simultaneous(
         a.terms = {}
         return turn
 
-    def forfeit(role: str) -> tuple[list[Turn], Outcome]:
+    def forfeit(role: str, failures: Failures) -> tuple[list[Turn], Outcome]:
         return transcript, Outcome(
             end_reason="forfeit",
             forfeited_by=role,
+            forfeit_attempts=failures,
             payoffs=matrix_payoffs(spec, history) if history else dict.fromkeys(names, 0.0),
         )
 
@@ -173,9 +185,9 @@ async def _simultaneous(
             view = _view(
                 spec, role, transcript, allowed_actions=[], must_act=False, phase="talk", **common
             )
-            turn = await _get_turn(agents[role], view, silent)
+            turn, failures = await _get_turn(agents[role], view, silent)
             if turn is None:
-                return forfeit(role)
+                return forfeit(role, failures)
             turn.round, turn.phase = rnd, "talk"
             transcript.append(turn)
             if on_turn:
@@ -194,10 +206,11 @@ async def _simultaneous(
             )
             for role in names
         }
-        turns = await asyncio.gather(*(_get_turn(agents[r], views[r], move) for r in names))
-        for role, turn in zip(names, turns, strict=True):
+        results = await asyncio.gather(*(_get_turn(agents[r], views[r], move) for r in names))
+        for role, (turn, failures) in zip(names, results, strict=True):
             if turn is None:
-                return forfeit(role)
+                return forfeit(role, failures)
+        turns = [turn for turn, _ in results]
         for turn in turns:
             turn.round, turn.phase = rnd, "move"
             transcript.append(turn)

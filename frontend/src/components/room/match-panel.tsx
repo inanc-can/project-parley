@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { SimpleSelect } from "@/components/simple-select";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,13 @@ import type { MatchEvent, Outcome, RoomView, Turn } from "@/lib/types";
 
 import { Transcript } from "./transcript";
 
-type LiveEpisode = { assignment: Record<string, string>; turns: Turn[]; outcome?: Outcome };
+type LiveEpisode = {
+  assignment: Record<string, string>;
+  turns: Turn[];
+  outcome?: Outcome;
+  error?: string | null;
+  retrying?: string; // the last failed attempt's error, while the episode is replayed
+};
 
 export function MatchPanel({
   room,
@@ -97,39 +103,60 @@ function LiveMatch({
 }) {
   const [episodes, setEpisodes] = useState<Record<number, LiveEpisode>>({});
   const [finished, setFinished] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
   const [selected, setSelected] = useState(0);
+
+  // The parent re-renders on every room poll; keep the stream alive across those renders.
+  const callbacks = useRef({ onDone, onError });
+  useEffect(() => {
+    callbacks.current = { onDone, onError };
+  });
 
   useEffect(() => {
     const source = new EventSource(api.streamUrl(roomId, matchId));
-    const handle = (raw: MessageEvent) => {
-      const e = JSON.parse(raw.data) as MatchEvent;
-      setEpisodes((prev) => {
-        const next = { ...prev };
-        if (e.type === "episode_start") next[e.index] = { assignment: e.assignment, turns: [] };
-        if (e.type === "turn" && next[e.index])
-          next[e.index] = { ...next[e.index], turns: [...next[e.index].turns, e.turn] };
-        if (e.type === "episode_end" && next[e.index]) next[e.index] = { ...next[e.index], outcome: e.outcome };
-        return next;
-      });
-      if (e.type === "match_end" || e.type === "error") {
-        setFinished(true);
-        if (e.type === "match_end") notifySuccess("Match finished", "Open Results for the full analysis.");
-        if (e.type === "error") onError(e.message);
-        source.close();
-        onDone();
-      }
-    };
-    // A finished match is no longer streamable; its results tab has everything.
-    source.onerror = () => {
+    const finish = () => {
       source.close();
       setFinished(true);
+      callbacks.current.onDone();
     };
-    for (const t of ["episode_start", "turn", "episode_end", "match_end", "error"]) source.addEventListener(t, handle);
+    // The server replays the whole log on every (re)connect, so each event resets what it covers.
+    const handle = (raw: MessageEvent) => {
+      // A dropped connection also fires a native "error" event, with no data; onerror handles it.
+      if (typeof raw.data !== "string") return;
+      const e = JSON.parse(raw.data) as MatchEvent;
+      if (e.type === "match_start") return setTotal(e.runs);
+      setEpisodes((prev) => {
+        const next = { ...prev };
+        const ep = "index" in e ? next[e.index] : undefined;
+        if (e.type === "episode_start")
+          next[e.index] = { assignment: e.assignment, turns: [], retrying: e.attempt > 1 ? ep?.retrying : undefined };
+        if (e.type === "turn" && ep) next[e.index] = { ...ep, turns: [...ep.turns, e.turn] };
+        if (e.type === "episode_retry" && ep) next[e.index] = { ...ep, retrying: e.error };
+        if (e.type === "episode_end" && ep) next[e.index] = { ...ep, outcome: e.outcome, error: e.error, retrying: undefined };
+        return next;
+      });
+      if (e.type === "match_end") {
+        notifySuccess("Match finished", "Open Results for the full analysis.");
+        finish();
+      }
+      if (e.type === "error") {
+        callbacks.current.onError(e.message);
+        finish();
+      }
+    };
+    // EventSource reconnects by itself after a dropped connection. It only gives up (CLOSED)
+    // when the server refuses, which means the match is over and lives in Results.
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) finish();
+    };
+    const types = ["match_start", "episode_start", "turn", "episode_retry", "episode_end", "match_end", "error"];
+    for (const t of types) source.addEventListener(t, handle);
     return () => source.close();
-  }, [roomId, matchId, onDone, onError]);
+  }, [roomId, matchId]);
 
   const indices = Object.keys(episodes).map(Number).sort((a, b) => a - b);
   const current = episodes[selected];
+  const failedCount = indices.filter((i) => episodes[i].error).length;
 
   return (
     <Card>
@@ -137,7 +164,8 @@ function LiveMatch({
         <div>
           <CardTitle>{finished ? "Match finished" : "Live"}</CardTitle>
           <CardDescription>
-            {indices.filter((i) => episodes[i].outcome).length} of {indices.length} episodes done
+            {indices.filter((i) => episodes[i].outcome).length} of {total ?? indices.length} episodes done
+            {failedCount > 0 && ` · ${failedCount} failed`}
           </CardDescription>
         </div>
         {finished && <Button onClick={onShowResults}>See results</Button>}
@@ -146,10 +174,14 @@ function LiveMatch({
         <div className="flex flex-wrap gap-2">
           {indices.map((i) => (
             <Button key={i} size="sm" variant={i === selected ? "default" : "outline"} onClick={() => setSelected(i)}>
-              #{i + 1} {episodes[i].outcome ? "✓" : "…"}
+              #{i + 1} {episodes[i].error ? "✕" : episodes[i].outcome ? "✓" : "…"}
             </Button>
           ))}
         </div>
+        {current?.retrying && (
+          <p className="text-muted-foreground text-sm">Retrying after a provider error: {current.retrying}</p>
+        )}
+        {current?.error && <p className="text-destructive text-sm">Failed after every attempt: {current.error}</p>}
         {current && <Transcript turns={current.turns} seatOf={current.assignment} />}
         {current?.outcome && (
           <p className="text-sm">

@@ -109,6 +109,7 @@ export function GameEditor({ room, onChange }: { room: RoomView; onChange: () =>
               <Label>Start from a template</Label>
               <SimpleSelect
                 value=""
+                placeholder="Choose a template…"
                 disabled={locked}
                 onChange={(name) => {
                   setLocal(templates[name]);

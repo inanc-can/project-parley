@@ -32,6 +32,16 @@ Create a room and send the link to the other person. On your network, start the 
 Model names follow LiteLLM: `featherless_ai/<model id>`, `anthropic/<model>`, `ollama/<model>`.
 The host sets the allowed list in the Match tab, or with `PARLEY_MODELS` (comma-separated).
 
+## Simulations in the terminal
+
+```sh
+uv run parley sim          # pick a game, set up both seats, choose runs; then watch it live
+```
+
+It ends with a summary (payoffs per seat, endings, metrics, theory baselines). The match is
+stored like any other, and the setup is saved to `.parley/last_sim.json`, so
+`uv run parley run .parley/last_sim.json --show-turns` reruns it exactly.
+
 ## Scripted studies (no UI)
 
 ```sh

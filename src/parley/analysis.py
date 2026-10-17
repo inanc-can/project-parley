@@ -10,13 +10,16 @@ import numpy as np
 import pandas as pd
 
 
-def load_episodes(*paths: str | Path) -> pd.DataFrame:
-    """One row per (episode, role): who played it, their payoff, the outcome and metrics."""
+def load_episodes(*paths: str | Path, include_failed: bool = False) -> pd.DataFrame:
+    """One row per (episode, role): who played it, their payoff, the outcome and metrics.
+    Episodes whose every attempt failed are skipped unless include_failed (payoff is NaN)."""
     rows = []
     for path in paths:
         for line in Path(path).read_text().splitlines():
             ep = json.loads(line)
             out = ep["outcome"]
+            if ep.get("error") and not include_failed:
+                continue
             for role, seat in ep["assignment"].items():
                 cfg = ep["seats"].get(seat) or {}
                 rows.append(

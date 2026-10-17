@@ -57,7 +57,11 @@ export function ResultsPanel({ room }: { room: RoomView }) {
           <Card>
             <CardHeader>
               <CardTitle>Summary</CardTitle>
-              <CardDescription>{summary.episodes} episodes, averaged over the roles each person played.</CardDescription>
+              <CardDescription>
+                {summary.episodes} episodes, averaged over the roles each person played.
+                {summary.failed > 0 &&
+                  ` ${summary.failed} failed after every retry and ${summary.failed === 1 ? "is" : "are"} left out of the averages.`}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
@@ -131,6 +135,7 @@ export function ResultsPanel({ room }: { room: RoomView }) {
               {result.episodes.map((e, i) => (
                 <Button key={i} size="sm" variant={i === episode ? "default" : "outline"} onClick={() => setEpisode(i)}>
                   #{i + 1}
+                  {e.error && " ✕"}
                 </Button>
               ))}
             </div>
@@ -142,7 +147,27 @@ export function ResultsPanel({ room }: { room: RoomView }) {
             <div className="flex flex-col gap-3 text-sm">
               <div>
                 <p className="font-medium">Outcome</p>
-                <p>{ep.outcome.end_reason}</p>
+                <p>
+                  {ep.outcome.end_reason}
+                  {ep.outcome.forfeited_by &&
+                    ` by ${ep.outcome.forfeited_by} (${ep.assignment[ep.outcome.forfeited_by]})`}
+                </p>
+                {ep.outcome.forfeit_attempts.length > 0 && (
+                  <details className="text-muted-foreground">
+                    <summary className="cursor-pointer">
+                      {ep.outcome.forfeit_attempts.length} rejected replies: {ep.outcome.forfeit_attempts.at(-1)?.error}
+                    </summary>
+                    {ep.outcome.forfeit_attempts.map((f, i) => (
+                      <pre key={i} className="bg-muted mt-2 max-h-32 overflow-auto rounded p-2 text-xs whitespace-pre-wrap">
+                        {f.output || "(no output)"}
+                      </pre>
+                    ))}
+                  </details>
+                )}
+                {ep.error && <p className="text-destructive">Failed after {ep.attempts} attempts: {ep.error}</p>}
+                {!ep.error && ep.attempts > 1 && (
+                  <p className="text-muted-foreground">Played on attempt {ep.attempts} after a provider error.</p>
+                )}
                 {ep.outcome.deal && (
                   <p>
                     deal {JSON.stringify(ep.outcome.deal.terms)}

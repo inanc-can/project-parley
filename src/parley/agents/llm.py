@@ -1,7 +1,7 @@
 """An agent backed by one LLM."""
 
 from parley.agents.parsing import parse_turn, render_rules, render_state
-from parley.core.agent import RoleView
+from parley.core.agent import RoleView, TurnError
 from parley.core.types import Turn
 from parley.llm.client import LLMClient
 
@@ -38,6 +38,10 @@ class LLMAgent:
             temperature=self.temperature,
             seed=self.seed,
         )
-        turn = parse_turn(resp.text, view.role)
+        try:
+            turn = parse_turn(resp.text, view.role)
+        except TurnError as e:
+            e.raw_output = resp.text
+            raise
         turn.tokens = resp.tokens
         return turn

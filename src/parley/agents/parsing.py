@@ -99,21 +99,34 @@ def render_state(view: RoleView) -> str:
 
 
 def extract_json(text: str) -> dict[str, Any]:
-    """Return the first JSON object in `text` (tolerates code fences and surrounding prose)."""
+    """Return the first JSON object in `text` (tolerates code fences and surrounding prose).
+
+    Also repairs an object closed too early, `{"reasoning": "..."}, "message": "..."}`,
+    which some open models write: the keys after the stray brace are merged in."""
     decoder = json.JSONDecoder()
     for i, ch in enumerate(text):
         if ch == "{":
             try:
-                obj, _ = decoder.raw_decode(text, i)
+                obj, end = decoder.raw_decode(text, i)
             except json.JSONDecodeError:
                 continue
             if isinstance(obj, dict):
+                rest = text[end:].lstrip()
+                if rest.startswith(","):
+                    try:
+                        more, _ = decoder.raw_decode("{" + rest[1:])
+                    except json.JSONDecodeError:
+                        more = None
+                    if isinstance(more, dict):
+                        obj = {**obj, **{k: v for k, v in more.items() if k not in obj}}
                 return obj
     raise TurnError("reply was not a JSON object. Reply with exactly one JSON object.")
 
 
 def parse_turn(text: str, role: str) -> Turn:
     data = extract_json(text)
+    if "message" not in data and data.get("action") in (None, ""):
+        raise TurnError('the JSON object has no "message" key. Put every key in one object.')
     message = data.get("message", "")
     if not isinstance(message, str):
         raise TurnError('"message" must be a string')
@@ -130,6 +143,8 @@ def parse_turn(text: str, role: str) -> Turn:
         parsed = Action(type=action["type"], terms=terms)
     else:
         raise TurnError('"action" must be null or an object with a "type"')
+    if not message.strip() and parsed is None:
+        raise TurnError('the reply was empty. Write a "message", or take an "action".')
     return Turn(
         role=role,
         message=message,

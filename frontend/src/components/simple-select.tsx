@@ -11,18 +11,20 @@ export function SimpleSelect({
   options,
   disabled,
   className,
+  placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: Option[];
   disabled?: boolean;
   className?: string;
+  placeholder?: string;
 }) {
   const items = Object.fromEntries(options.map((o) => [o.value, o.label ?? o.value]));
   return (
     <Select value={value} items={items} disabled={disabled} onValueChange={(v) => v != null && onChange(String(v))}>
       <SelectTrigger className={className ?? "w-full"}>
-        <SelectValue />
+        <SelectValue placeholder={placeholder} />
       </SelectTrigger>
       <SelectContent>
         {options.map((o) => (

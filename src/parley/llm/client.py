@@ -7,6 +7,7 @@ Model strings follow LiteLLM, e.g. "featherless_ai/meta-llama/Llama-3.3-70B-Inst
 import asyncio
 import hashlib
 import json
+import random
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -21,9 +22,31 @@ class LLMResponse(BaseModel):
     cached: bool = False
 
 
+def is_transient(e: Exception) -> bool:
+    """Provider hiccups worth waiting out: overload, rate limits, timeouts, dropped
+    connections. Featherless also answers an overloaded model with a 200 whose body has an
+    error object appended; LiteLLM reports that as an InternalServerError ("Extra data")."""
+    import litellm
+
+    return isinstance(
+        e,
+        litellm.InternalServerError
+        | litellm.ServiceUnavailableError
+        | litellm.RateLimitError
+        | litellm.Timeout
+        | litellm.APIConnectionError,
+    )
+
+
 class LLMClient:
-    def __init__(self, cache: Cache | None = None, concurrency: int = 4, num_retries: int = 3):
-        self.cache, self.num_retries = cache, num_retries
+    def __init__(
+        self,
+        cache: Cache | None = None,
+        concurrency: int = 4,
+        retry_delays: tuple[float, ...] = (2, 5, 10, 20),
+    ):
+        """retry_delays: seconds to wait before each retry of a transient failure."""
+        self.cache, self.retry_delays = cache, retry_delays
         self._sem = asyncio.Semaphore(concurrency)
 
     async def complete(
@@ -47,8 +70,15 @@ class LLMClient:
         if self.cache and (hit := self.cache.get(key)):
             return LLMResponse(**hit, cached=True)
 
-        async with self._sem:
-            resp = await self._call(model, messages, temperature, max_tokens)
+        for delay in (*self.retry_delays, None):
+            try:
+                async with self._sem:
+                    resp = await self._call(model, messages, temperature, max_tokens)
+                break
+            except Exception as e:
+                if delay is None or not is_transient(e):
+                    raise
+                await asyncio.sleep(delay * (0.75 + random.random() / 2))  # jitter
         if self.cache:
             self.cache.set(key, resp.model_dump(exclude={"cached"}))
         return resp
@@ -56,14 +86,14 @@ class LLMClient:
     async def _call(self, model, messages, temperature, max_tokens) -> LLMResponse:
         import litellm  # slow import; only needed for live calls
 
-        # num_retries covers transient failures (rate limits, timeouts); permanent ones
-        # such as a gated or unknown model still raise and stop the match.
+        # complete() retries transient failures with backoff; what still fails is retried
+        # per episode by the match runner, except setup errors, which stop the match.
         r: Any = await litellm.acompletion(
             model=model,
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            num_retries=self.num_retries,
+            num_retries=0,
         )
         usage = getattr(r, "usage", None)
         return LLMResponse(

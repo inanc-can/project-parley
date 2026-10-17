@@ -27,7 +27,8 @@ class Turn(BaseModel):
     phase: Literal["talk", "move"] | None = None
 
 
-EndReason = Literal["accept", "walk_away", "reject", "limit", "rounds_complete", "forfeit"]
+# "error": every attempt at the episode failed (provider errors); EpisodeRecord.error says why.
+EndReason = Literal["accept", "walk_away", "reject", "limit", "rounds_complete", "forfeit", "error"]
 
 
 class Deal(BaseModel):
@@ -41,5 +42,7 @@ class Outcome(BaseModel):
     deal: Deal | None = None
     payoffs: dict[str, float] = Field(default_factory=dict)
     forfeited_by: str | None = None
+    # The forfeiting role's rejected replies, oldest first: {"error": why, "output": raw text}.
+    forfeit_attempts: list[dict[str, str]] = Field(default_factory=list)
     metrics: dict[str, float] = Field(default_factory=dict)
     judge: dict[str, Any] | None = None

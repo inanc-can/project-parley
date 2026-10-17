@@ -242,16 +242,18 @@ def visible_episode(record: EpisodeRecord, viewer: str, revealed: set[str]) -> d
 
 
 def match_summary(records: list[EpisodeRecord]) -> dict[str, Any]:
-    """Per-seat averages across roles, plus overall deal rate and mean metrics."""
+    """Per-seat averages across roles, plus overall deal rate and mean metrics.
+    Failed episodes count in end_reasons and failed, but not in any average."""
     if not records:
         return {}
+    played = [r for r in records if r.error is None]
     seats: dict[str, list[float]] = {}
-    for r in records:
+    for r in played:
         for role, payoff in r.outcome.payoffs.items():
             seats.setdefault(r.assignment[role], []).append(payoff)
-    metric_keys = {k for r in records for k in r.outcome.metrics}
+    metric_keys = {k for r in played for k in r.outcome.metrics}
     metrics = {
-        k: statistics.fmean(r.outcome.metrics[k] for r in records if k in r.outcome.metrics)
+        k: statistics.fmean(r.outcome.metrics[k] for r in played if k in r.outcome.metrics)
         for k in sorted(metric_keys)
     }
     ends: dict[str, int] = {}
@@ -259,6 +261,7 @@ def match_summary(records: list[EpisodeRecord]) -> dict[str, Any]:
         ends[r.outcome.end_reason] = ends.get(r.outcome.end_reason, 0) + 1
     return {
         "episodes": len(records),
+        "failed": len(records) - len(played),
         "mean_payoff_by_seat": {s: statistics.fmean(v) for s, v in seats.items()},
         "end_reasons": ends,
         "metrics": metrics,

@@ -52,6 +52,7 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
     load_dotenv()
     store = store or Store()
     client = client or LLMClient(cache=Cache())
+    store.mark_interrupted()  # matches this process didn't start can't still be running
     live: dict[str, MatchEvents] = {}
     lock = asyncio.Lock()  # serialises room read-modify-write
 
@@ -161,9 +162,7 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
 
         async def run():
             try:
-                records = await run_match(cfg, client, match_id, events.push)
-                for rec in records:
-                    store.save_episode(rec)
+                await run_match(cfg, client, match_id, events.push, store.save_episode)
                 store.set_status(match_id, "done")
             except Exception as e:  # surface to viewers instead of dying silently
                 store.set_status(match_id, "failed")
@@ -213,6 +212,8 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
             async for e in live[match_id].stream():
                 yield {"event": e["type"], "data": json.dumps(e)}
 
-        return EventSourceResponse(gen())
+        # no-transform stops proxies (including Next's rewrite) from gzipping the stream,
+        # which holds events back until the match ends.
+        return EventSourceResponse(gen(), headers={"Cache-Control": "no-cache, no-transform"})
 
     return app

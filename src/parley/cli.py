@@ -1,8 +1,7 @@
 """Command line: run matches, export results, serve the web app."""
 
-import asyncio
 import json
-import uuid
+import sys
 from pathlib import Path
 
 import typer
@@ -10,7 +9,7 @@ from dotenv import load_dotenv
 
 from parley.llm.cache import Cache
 from parley.llm.client import LLMClient
-from parley.matches.runner import MatchConfig, run_match
+from parley.matches.runner import MatchConfig
 from parley.matches.seats import ScriptedSeat
 from parley.storage import Store
 from parley.templates import TEMPLATES
@@ -34,29 +33,45 @@ def run(
     config: Path,
     db: Path = Path(".parley/parley.sqlite"),
     no_cache: bool = False,
+    show_turns: bool = typer.Option(False, "--show-turns", help="print every message live"),
 ):
-    """Run a match from a JSON config and store every episode."""
+    """Run a match from a JSON config (from `parley template` or `parley sim`); store it."""
+    from parley.sim import LivePrinter, print_summary, run_and_store
+
     load_dotenv()
     cfg = MatchConfig.model_validate_json(config.read_text())
-    store = Store(db)
     client = LLMClient(cache=None if no_cache else Cache())
-    match_id = uuid.uuid4().hex[:12]
-    store.create_match(match_id, cfg)
+    match_id, records = run_and_store(cfg, client, Store(db), LivePrinter(cfg, show_turns))
+    print_summary(cfg, records)
+    typer.echo(f"\nmatch {match_id} stored in {db} · parley export {match_id}")
 
-    async def on_event(e):
-        if e["type"] == "episode_end":
-            o = e["outcome"]
-            typer.echo(f"episode {e['index']}: {o['end_reason']:<16} payoffs {o['payoffs']}")
 
+@app.command()
+def sim(db: Path = Path(".parley/parley.sqlite"), no_cache: bool = False):
+    """Set up a match step by step, watch it live, and get a summary (interactive)."""
+    from parley.sim import LAST_SIM, LivePrinter, print_summary, run_and_store, wizard
+
+    if not sys.stdin.isatty():
+        typer.echo("parley sim asks questions, so it needs a terminal. To script a match, use")
+        typer.echo("`parley template <game> > match.json`, edit it, then `parley run match.json`.")
+        raise typer.Exit(1)
+    load_dotenv()
     try:
-        records = asyncio.run(run_match(cfg, client, match_id, on_event))
-    except BaseException:
-        store.set_status(match_id, "failed")
-        raise
-    for r in records:
-        store.save_episode(r)
-    store.set_status(match_id, "done")
-    typer.echo(f"match {match_id}: {len(records)} episodes stored in {db}")
+        cfg, live = wizard()
+    except KeyboardInterrupt:
+        typer.echo("\nCancelled.")
+        raise typer.Exit(1) from None
+    LAST_SIM.parent.mkdir(parents=True, exist_ok=True)
+    LAST_SIM.write_text(cfg.model_dump_json(indent=2))
+    client = LLMClient(cache=None if no_cache else Cache())
+    try:
+        match_id, records = run_and_store(cfg, client, Store(db), LivePrinter(cfg, live))
+    except KeyboardInterrupt:
+        typer.echo("\nStopped. Finished episodes are saved; the match is marked interrupted.")
+        raise typer.Exit(130) from None
+    print_summary(cfg, records)
+    typer.echo(f"\nmatch {match_id} stored in {db} · parley export {match_id}")
+    typer.echo(f"setup saved to {LAST_SIM} · rerun it: parley run {LAST_SIM}")
 
 
 @app.command()

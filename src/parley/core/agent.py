@@ -50,6 +50,8 @@ class RoleView(BaseModel):
 class TurnError(Exception):
     """The agent could not produce a usable turn (e.g. unparseable model output)."""
 
+    raw_output: str | None = None  # the reply that failed, when the agent has one
+
 
 class Agent(Protocol):
     async def act(self, view: RoleView, feedback: str | None = None) -> Turn:

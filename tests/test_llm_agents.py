@@ -1,9 +1,12 @@
 import json
 
+import pytest
+
 from parley.agents.llm import LLMAgent
 from parley.agents.parsing import extract_json, parse_turn
 from parley.agents.scripted import SilentAgent
 from parley.agents.team import Critic, TeamAgent
+from parley.core.agent import TurnError
 from parley.core.engine import run_episode
 from parley.core.spec import Alternating
 from parley.judge import Judge, apply_judgment
@@ -32,6 +35,29 @@ def reply(message="", action=None, reasoning="thinking"):
 def test_extract_json_tolerates_fences_and_prose():
     assert extract_json('Sure!\n```json\n{"message": "hi"}\n```') == {"message": "hi"}
     assert extract_json('{bad} then {"a": 1}') == {"a": 1}
+
+
+def test_extract_json_repairs_an_object_closed_too_early():
+    text = '{"reasoning": "too high"},  "message": "No.", "action": {"type": "walk_away"}}'
+    turn = parse_turn(text, "buyer")
+    assert (turn.reasoning, turn.message, turn.action.type) == ("too high", "No.", "walk_away")
+    with pytest.raises(TurnError, match='no "message"'):
+        parse_turn('{"reasoning": "hmm"}', "buyer")
+
+
+async def test_reprompts_are_fresh_samples_even_with_the_cache(tmp_path):
+    client = FakeClient("nope", reply("Deal?"), cache=Cache(tmp_path / "c.sqlite"))
+    turns, _ = await run_episode(
+        buy_sell(), {"seller": LLMAgent(client, "m"), "buyer": SilentAgent()}
+    )
+    assert turns[0].message == "Deal?" and turns[0].retries == 1
+    assert "(attempt 2 of 4)" in client.prompts[1][-1]["content"]
+
+
+def test_parse_turn_rejects_an_empty_reply():
+    with pytest.raises(TurnError, match="empty"):
+        parse_turn(reply(message="  "), "seller")
+    assert parse_turn(reply(action="accept"), "seller").action.type == "accept"
 
 
 def test_parse_turn_accepts_bare_action_string():
@@ -68,6 +94,8 @@ async def test_hopeless_llm_forfeits():
         buy_sell(), {"seller": LLMAgent(client, "m"), "buyer": SilentAgent()}
     )
     assert out.end_reason == "forfeit" and out.forfeited_by == "seller"
+    assert [f["output"] for f in out.forfeit_attempts] == ["nope"] * 4  # first try + 3 re-prompts
+    assert "not a JSON object" in out.forfeit_attempts[0]["error"]
 
 
 async def test_ipd_move_phase():
