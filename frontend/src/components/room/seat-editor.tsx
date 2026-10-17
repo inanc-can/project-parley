@@ -34,7 +34,7 @@ export function SeatEditor({ room, onChange, seatOf }: { room: RoomView; onChang
   const dirty = localSeat !== null || localReveal !== null || !mine.seat;
   const update = (s: Seat) => setLocalSeat(s);
   const strategy = "strategy" in seat ? seat.strategy : "";
-  const modelOptions = models.map((m) => ({ value: m, label: m.replace(/^featherless_ai\//, "") }));
+  const modelOptions = models.map((m) => ({ value: m, label: m.replace(/^(openrouter|featherless_ai)\//, "") }));
 
   async function run(fn: () => Promise<unknown>, success: string, errorTitle: string) {
     if (await attempt(fn, success, errorTitle)) onChange();

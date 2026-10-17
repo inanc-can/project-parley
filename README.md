@@ -29,7 +29,8 @@ Create a room and send the link to the other person. On your network, start the 
 4. **Results**: payoffs, judge ratings, theory baselines, transcripts. Each person decides
    whether their setup and reasoning are revealed.
 
-Model names follow LiteLLM: `featherless_ai/<model id>`, `anthropic/<model>`, `ollama/<model>`.
+Model names follow LiteLLM: `openrouter/<org>/<model>` (the default provider),
+`featherless_ai/<model id>`, `anthropic/<model>`, `ollama/<model>`.
 The host sets the allowed list in the Match tab, or with `PARLEY_MODELS` (comma-separated).
 
 ## Simulations in the terminal

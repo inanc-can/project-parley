@@ -39,7 +39,7 @@ layout are in `README.md`; the original design plan is
 - The SSE stream must send `Cache-Control: no-transform` (else Next gzips and buffers it).
 - `Store` shares one SQLite connection across threads behind a lock.
 
-## Known provider behaviour (Featherless)
+## Known provider behaviour (Featherless, the provider until 2026-10-17)
 
 Overload → HTTP 200 with an error object appended ("Extra data"); retry fixes it.
 Qwen2.5-14B sometimes emits degenerate `{"!!!!…` (counts as the agent's forfeit — a
@@ -61,8 +61,13 @@ for seats/game, a start bar); **Assign me** (one person takes the open seat, `Pa
 `seat_of` on seat/ready); the room **assistant** (`api/assistant.py`): a chat column built on
 assistant-ui that acts with the person's token through JSON actions, streamed as NDJSON.
 
-Assistant notes: Qwen2.5-72B costs all 4 Featherless units, so it falls back to phi-4 when a
-match is running (`PARLEY_ASSISTANT_MODEL` / `_FALLBACK_MODEL`). Its replies are not cached.
+Inference moved to OpenRouter (`OPENROUTER_API_KEY`) on 2026-10-17; Llama-3.1-8B and Qwen2.5-7B
+replace Hermes-3-8B and Qwen2.5-14B, which OpenRouter lacks. Stored rooms were migrated (backup:
+`.parley/parley.before-openrouter.sqlite`); Featherless still works via `PARLEY_MODELS`.
+
+Assistant notes: Qwen2.5-72B with JSON mode; falls back to phi-4 when rate limited
+(`PARLEY_ASSISTANT_MODEL` / `_FALLBACK_MODEL`). Its replies are not cached; unusable replies are
+logged. `edit_game` refuses surplus games whose roles lost their `reservation`.
 `next.config.ts` raises `proxyTimeout` because answers take over a minute. Vendored
 `src/components/assistant-ui/` is excluded from lint; update it with `assistant-ui add`.
 Run the API with `PYTHONPATH=src` (as the Makefile does) if `No module named 'parley'`.

@@ -14,14 +14,15 @@ from parley.core.spec import Alternating, GameSpec, JudgeOnlyScoring, Role
 from parley.matches.runner import EpisodeRecord, MatchConfig
 from parley.matches.seats import LLMSeat, Seat, TeamSeat
 
-# Ungated Featherless models across families (gated ones, e.g. meta-llama/*, need the account
-# linked to Hugging Face first). Concurrency cost per model: 72B = 4, the others = 1.
+# OpenRouter models across families (needs OPENROUTER_API_KEY). Until 2026-10-17 the defaults
+# were on Featherless; OpenRouter has no Hermes-3-8B or Qwen2.5-14B, so Llama-3.1-8B (Hermes 3's
+# base model) and Qwen2.5-7B stand in. Featherless still works through PARLEY_MODELS.
 DEFAULT_MODELS = [
-    "featherless_ai/mistralai/Mistral-Nemo-Instruct-2407",
-    "featherless_ai/Qwen/Qwen2.5-14B-Instruct",
-    "featherless_ai/NousResearch/Hermes-3-Llama-3.1-8B",
-    "featherless_ai/microsoft/phi-4",
-    "featherless_ai/Qwen/Qwen2.5-72B-Instruct",
+    "openrouter/mistralai/mistral-nemo",
+    "openrouter/qwen/qwen-2.5-7b-instruct",
+    "openrouter/meta-llama/llama-3.1-8b-instruct",
+    "openrouter/microsoft/phi-4",
+    "openrouter/qwen/qwen-2.5-72b-instruct",
 ]
 
 

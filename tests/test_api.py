@@ -10,7 +10,7 @@ from parley.templates import buy_sell
 
 
 class FakeClient(LLMClient):
-    async def _call(self, model, messages, temperature, max_tokens):
+    async def _call(self, model, messages, temperature, max_tokens, **kw):
         if "impartial judge" in messages[-1]["content"]:
             text = json.dumps({"deal_reached": False, "rubric": {}, "summary": "s"})
         else:
@@ -160,14 +160,14 @@ class ScriptedAssistant(FakeClient):
         super().__init__()
         self.replies = list(replies)
 
-    async def _call(self, model, messages, temperature, max_tokens):
+    async def _call(self, model, messages, temperature, max_tokens, **kw):
         if "Parley assistant" in messages[0]["content"]:
             return LLMResponse(text=json.dumps(self.replies.pop(0)), model=model)
-        return await super()._call(model, messages, temperature, max_tokens)
+        return await super()._call(model, messages, temperature, max_tokens, **kw)
 
 
 def test_assistant_sets_up_the_room_and_starts_a_match(tmp_path):
-    model = "featherless_ai/mistralai/Mistral-Nemo-Instruct-2407"
+    model = "openrouter/mistralai/mistral-nemo"  # in the default allowed list
     agent = {"model": model, "strategy": "Be fair.", "temperature": 0.5}
     replies = [
         {
@@ -225,11 +225,11 @@ def test_assistant_reprompts_once_when_it_answers_in_prose(tmp_path):
     ]
 
     class Assistant(ScriptedAssistant):
-        async def _call(self, model, messages, temperature, max_tokens):
+        async def _call(self, model, messages, temperature, max_tokens, **kw):
             if "Parley assistant" in messages[0]["content"]:
                 r = self.replies.pop(0)
                 return LLMResponse(text=r if isinstance(r, str) else json.dumps(r), model=model)
-            return await super()._call(model, messages, temperature, max_tokens)
+            return await super()._call(model, messages, temperature, max_tokens, **kw)
 
     api = TestClient(create_app(Store(tmp_path / "db.sqlite"), Assistant(replies)))
     r = api.post("/api/rooms", json={"name": "Ada"}).json()
@@ -254,3 +254,28 @@ def test_assistant_streams_its_trace_as_it_works(tmp_path):
     kinds = [e["type"] for e in events]
     assert kinds == ["thinking", "message", "action", "result", "thinking", "message"]
     assert events[2]["tool"] == "room_state" and events[3]["ok"]
+
+
+def test_assistant_cannot_drop_the_reservations_surplus_scoring_needs(tmp_path):
+    roles = [
+        {"name": "seller", "private_brief": "Sell."},
+        {"name": "buyer", "private_brief": "Buy."},
+    ]
+    replies = [
+        {
+            "message": "Setting up.",
+            "actions": [
+                {"tool": "use_template", "args": {"name": "buy_sell"}},
+                {"tool": "edit_game", "args": {"changes": {"roles": roles}}},
+            ],
+        },
+        {"message": "Kept the template's roles.", "actions": []},
+    ]
+    api = TestClient(create_app(Store(tmp_path / "db.sqlite"), ScriptedAssistant(replies)))
+    r = api.post("/api/rooms", json={"name": "Ada"}).json()
+    chat = {"messages": [{"role": "user", "content": "car sale"}]}
+    out = api.post(f"/api/rooms/{r['room_id']}/assistant", json=chat, headers=h(r["token"]))
+    use, bad = out.json()["steps"][0]["actions"]
+    assert use["ok"] and not bad["ok"] and "reservation" in bad["result"]
+    spec = api.get(f"/api/rooms/{r['room_id']}", headers=h(r["token"])).json()["game"]["spec"]
+    assert spec["roles"][0]["private_values"]["reservation"] == 8000  # template untouched

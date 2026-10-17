@@ -10,6 +10,7 @@ actions run, their results go back to it, and it replies again until it sends no
 """
 
 import json
+import logging
 import os
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable
@@ -21,15 +22,17 @@ from pydantic_core import to_jsonable_python
 
 from parley.agents.parsing import extract_json
 from parley.api import rooms as R
-from parley.core.spec import GameSpec
+from parley.core.spec import GameSpec, SurplusScoring
 from parley.llm.client import LLMClient
 from parley.matches.seats import LLMSeat, ScriptedSeat
 from parley.templates import TEMPLATES
 
-DEFAULT_MODEL = "featherless_ai/Qwen/Qwen2.5-72B-Instruct"
-# Featherless charges a 72B model 4 concurrency units (the whole plan), so it is refused while a
-# match runs; this 1-unit model answers instead. Override with PARLEY_ASSISTANT_FALLBACK_MODEL.
-FALLBACK_MODEL = "featherless_ai/microsoft/phi-4"
+log = logging.getLogger("parley.assistant")
+
+DEFAULT_MODEL = "openrouter/qwen/qwen-2.5-72b-instruct"
+# Answers instead when the main model is rate limited (on Featherless a 72B model takes the whole
+# concurrency plan while a match runs). Override with PARLEY_ASSISTANT_FALLBACK_MODEL.
+FALLBACK_MODEL = "openrouter/microsoft/phi-4"
 MAX_STEPS = 6
 
 
@@ -144,6 +147,15 @@ async def _run_tool(ops: RoomOps, tool: str, args: dict[str, Any]) -> Any:
 
             def edit(r: R.Room):
                 spec = GameSpec.model_validate({**r.spec.model_dump(mode="json"), **changes})
+                # Surplus scoring reads each role's reservation and silently uses 0 without it,
+                # which a rewrite of the roles easily drops.
+                if isinstance(spec.scoring, SurplusScoring):
+                    missing = [x.name for x in spec.roles if "reservation" not in x.private_values]
+                    if missing:
+                        raise ValueError(
+                            f"roles {missing} have no private_values.reservation, which this "
+                            "game's scoring needs; keep the roles' values or leave roles out"
+                        )
                 R.update_game(r, t, spec)
                 return f"game updated to version {r.version}"
 
@@ -218,7 +230,12 @@ def _rate_limited(e: Exception) -> bool:
 async def _complete(client: LLMClient, model: str, prompt: list[dict[str, str]]) -> str:
     """Ask the assistant model (never cached: a regenerated answer must be new); when it is over
     the provider's concurrency limit, ask the smaller fallback model instead."""
-    kwargs: dict[str, Any] = {"temperature": 0.2, "max_tokens": 1200, "cache": False}
+    kwargs: dict[str, Any] = {
+        "temperature": 0.2,
+        "max_tokens": 1500,
+        "cache": False,
+        "json_mode": True,  # providers that support it then can't return malformed JSON
+    }
     try:
         return (await client.complete(model, prompt, retry_delays=(2,), **kwargs)).text
     except Exception as e:
@@ -249,6 +266,8 @@ async def chat_events(
         yield {"type": "thinking"}
         text = await _complete(client, model, prompt)
         reply = parse_reply(text)
+        if reply is None:  # keep a trace of what the model sent, to diagnose format failures
+            log.warning("assistant reply was not usable JSON: %r", text[:2000])
         if reply is None and not reminded:  # prose only: it may claim changes it never made
             reminded = True
             messages += [

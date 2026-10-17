@@ -32,7 +32,7 @@ console = Console(highlight=False)
 
 
 def short(model: str) -> str:
-    """featherless_ai/Qwen/Qwen2.5-14B-Instruct -> Qwen2.5-14B-Instruct"""
+    """openrouter/qwen/qwen-2.5-7b-instruct -> qwen-2.5-7b-instruct"""
     return model.rsplit("/", 1)[-1]
 
 
@@ -76,7 +76,7 @@ def _pick_model(text: str, models: list[str], default: str | None = None) -> str
     if model == OTHER:
         model = _ask(
             questionary.text(
-                "Model id (e.g. featherless_ai/<org>/<model>, anthropic/<model>):",
+                "Model id (e.g. openrouter/<org>/<model>, anthropic/<model>):",
                 validate=lambda v: bool(v.strip()) or "Required",
             )
         ).strip()

@@ -216,7 +216,7 @@ function HostSettings({ room, onChange }: { room: RoomView; onChange: () => void
       <CardHeader>
         <CardTitle>Host settings</CardTitle>
         <CardDescription>
-          All calls use your API key. Model names follow LiteLLM, e.g. featherless_ai/&lt;model id&gt;.
+          All calls use your API key. Model names follow LiteLLM, e.g. openrouter/&lt;org&gt;/&lt;model&gt;.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
