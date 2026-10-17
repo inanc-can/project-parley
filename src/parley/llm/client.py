@@ -56,9 +56,12 @@ class LLMClient:
         temperature: float = 0.7,
         max_tokens: int = 1000,
         seed: int = 0,
+        cache: bool = True,
+        retry_delays: tuple[float, ...] | None = None,
     ) -> LLMResponse:
         """`seed` is part of the cache key, so repeated episodes get distinct samples
-        while rerunning the same episode is reproducible."""
+        while rerunning the same episode is reproducible. `cache=False` always asks the model
+        (and stores nothing); `retry_delays` overrides the client's backoff for this call."""
         request = dict(
             model=model,
             messages=messages,
@@ -67,10 +70,12 @@ class LLMClient:
             seed=seed,
         )
         key = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
-        if self.cache and (hit := self.cache.get(key)):
+        use_cache = self.cache if cache else None
+        if use_cache and (hit := use_cache.get(key)):
             return LLMResponse(**hit, cached=True)
 
-        for delay in (*self.retry_delays, None):
+        delays = self.retry_delays if retry_delays is None else retry_delays
+        for delay in (*delays, None):
             try:
                 async with self._sem:
                     resp = await self._call(model, messages, temperature, max_tokens)
@@ -79,8 +84,8 @@ class LLMClient:
                 if delay is None or not is_transient(e):
                     raise
                 await asyncio.sleep(delay * (0.75 + random.random() / 2))  # jitter
-        if self.cache:
-            self.cache.set(key, resp.model_dump(exclude={"cached"}))
+        if use_cache:
+            use_cache.set(key, resp.model_dump(exclude={"cached"}))
         return resp
 
     async def _call(self, model, messages, temperature, max_tokens) -> LLMResponse:

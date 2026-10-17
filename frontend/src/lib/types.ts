@@ -54,7 +54,16 @@ export type RoomSettings = { allowed_models: string[]; judge_model: string | nul
 export type RoomView = {
   id: string;
   me: { name: string; is_host: boolean; seat: Seat | null; ready: boolean; reveal: boolean };
-  participants: { name: string; ready: boolean; has_seat: boolean; agreed: boolean; is_host: boolean }[];
+  // Seats this person took with "Assign me"; they edit these like their own.
+  controlled: { name: string; seat: Seat | null; ready: boolean; reveal: boolean }[];
+  participants: {
+    name: string;
+    ready: boolean;
+    has_seat: boolean;
+    agreed: boolean;
+    is_host: boolean;
+    owner: string | null; // who controls this seat, when it was taken with "Assign me"
+  }[];
   capacity: number;
   game: { version: number; spec: GameSpec; locked: boolean; edited_by: string | null };
   settings: RoomSettings;
@@ -63,6 +72,16 @@ export type RoomView = {
   match_ids: string[];
   running: string[];
 };
+
+// The room assistant's chat history, as its endpoints take it.
+export type ChatMessage = { role: "user" | "assistant"; content: string };
+// What the assistant's stream sends while it works (see api/assistant.py `chat_events`).
+export type AssistantEvent =
+  | { type: "thinking" }
+  | { type: "message"; text: string }
+  | { type: "action"; id: number; tool: string; args: Record<string, unknown> }
+  | { type: "result"; id: number; ok: boolean; result: unknown }
+  | { type: "error"; message: string };
 
 export type Action = { type: string; terms: Record<string, number> };
 export type Turn = {

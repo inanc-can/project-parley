@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Vendored from the assistant-ui registry (`assistant-ui add`); updated by its CLI, not by hand.
+    "src/components/assistant-ui/**",
   ]),
 ]);
 

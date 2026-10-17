@@ -1,8 +1,33 @@
 import { startedHere } from "./room-events";
-import type { GameSpec, MatchListItem, MatchResult, RoomSettings, RoomView, Seat } from "./types";
+import type {
+  AssistantEvent,
+  ChatMessage,
+  GameSpec,
+  MatchListItem,
+  MatchResult,
+  RoomSettings,
+  RoomView,
+  Seat,
+} from "./types";
 
 // Each room gets its own participant token, kept in this browser only.
-const tokenKey = (roomId: string) => `parley:token:${roomId}`;
+const TOKEN_PREFIX = "parley:token:";
+const tokenKey = (roomId: string) => `${TOKEN_PREFIX}${roomId}`;
+export const TOKENS_CHANGED = "parley:tokens";
+
+/** Ids of the rooms this browser holds a token for (empty if storage is unavailable). */
+export function listTokenRooms(): string[] {
+  try {
+    const ids: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(TOKEN_PREFIX)) ids.push(key.slice(TOKEN_PREFIX.length));
+    }
+    return ids.sort();
+  } catch {
+    return [];
+  }
+}
 
 export function getToken(roomId: string): string | null {
   try {
@@ -15,6 +40,7 @@ export function getToken(roomId: string): string | null {
 export function setToken(roomId: string, token: string) {
   try {
     localStorage.setItem(tokenKey(roomId), token);
+    window.dispatchEvent(new Event(TOKENS_CHANGED));
   } catch {
     /* private mode: the token lives only for this page */
   }
@@ -80,12 +106,38 @@ export const api = {
     call(`/rooms/${roomId}/game/agree`, { method: "POST", body: json({ version }), roomId }),
   unlock: (roomId: string) => call(`/rooms/${roomId}/game/unlock`, { method: "POST", roomId }),
 
-  putSeat: (roomId: string, seat: Seat, reveal: boolean) =>
-    call(`/rooms/${roomId}/seat`, { method: "PUT", body: json({ seat, reveal }), roomId }),
-  ready: (roomId: string, ready: boolean) =>
-    call(`/rooms/${roomId}/ready`, { method: "POST", body: json({ ready }), roomId }),
+  // `seatOf` targets a seat you took with "Assign me"; leave it out for your own.
+  putSeat: (roomId: string, seat: Seat, reveal: boolean, seatOf?: string) =>
+    call(`/rooms/${roomId}/seat`, { method: "PUT", body: json({ seat, reveal, seat_of: seatOf }), roomId }),
+  ready: (roomId: string, ready: boolean, seatOf?: string) =>
+    call(`/rooms/${roomId}/ready`, { method: "POST", body: json({ ready, seat_of: seatOf }), roomId }),
+  assignSelf: (roomId: string) => call<{ name: string }>(`/rooms/${roomId}/seats/assign`, { method: "POST", roomId }),
+  releaseSeat: (roomId: string, seatOf: string) =>
+    call(`/rooms/${roomId}/seats/release`, { method: "POST", body: json({ seat_of: seatOf }), roomId }),
   putSettings: (roomId: string, settings: RoomSettings) =>
     call(`/rooms/${roomId}/settings`, { method: "PUT", body: json(settings), roomId }),
+
+  /** The assistant's answer as it happens: one event per line of the response. */
+  async *assistantStream(roomId: string, messages: ChatMessage[], signal?: AbortSignal): AsyncGenerator<AssistantEvent> {
+    const token = getToken(roomId);
+    const res = await fetch(`/api/rooms/${roomId}/assistant/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { "X-Parley-Token": token } : {}) },
+      body: json({ messages }),
+      signal,
+    });
+    if (!res.ok || !res.body) throw new ApiError(res.status, res.statusText);
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+      for (const line of lines) if (line.trim()) yield JSON.parse(line) as AssistantEvent;
+    }
+  },
 
   startMatch: async (roomId: string, runs?: number) => {
     const r = await call<{ match_id: string }>(`/rooms/${roomId}/matches`, {

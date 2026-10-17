@@ -138,7 +138,7 @@ export function GameEditor({ room, onChange }: { room: RoomView; onChange: () =>
               Each role&apos;s brief and values are shown only to the agent playing it. Seats swap roles between runs.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
+          <CardContent className="grid gap-4 @3xl:grid-cols-2">
             {draft.roles.map((r, i) => (
               <div key={i} className="flex flex-col gap-2 rounded-md border p-3">
                 <Label>Role name</Label>
@@ -347,7 +347,7 @@ function ScoringCard({
         )}
 
         {s.kind === "surplus" && (
-          <div className="grid gap-3 md:grid-cols-3">
+          <div className="grid gap-3 @3xl:grid-cols-3">
             <div className="flex flex-col gap-2">
               <Label>Field that sets the payoff</Label>
               <SimpleSelect
@@ -369,7 +369,7 @@ function ScoringCard({
                 />
               </div>
             ))}
-            <p className="text-muted-foreground text-sm md:col-span-3">
+            <p className="text-muted-foreground text-sm @3xl:col-span-3">
               Give each role a <code>reservation</code> private value; an optional <code>no_deal</code> value is what
               they get without a deal.
             </p>
@@ -377,7 +377,7 @@ function ScoringCard({
         )}
 
         {s.kind === "valuations" && (
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3 @3xl:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label>Items to split (name = count)</Label>
               <ValuesBox

@@ -12,7 +12,7 @@ export function roomNotices(prev: RoomView, next: RoomView): Notice[] {
   const before = new Map(prev.participants.map((p) => [p.name, p]));
 
   for (const p of next.participants) {
-    if (p.name === me) continue;
+    if (p.name === me || p.owner === me) continue; // your own seats need no announcing
     const was = before.get(p.name);
     if (!was) {
       out.push({ title: `${p.name} joined the room`, type: "info" });

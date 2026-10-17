@@ -55,11 +55,23 @@ per player (separate localStorage tokens). Shell commands use zsh: no `timeout` 
 ## Status (2026-10-17)
 
 Done: all 8 plan steps; editorial styling; full two-person match verified in the UI (live
-view, results, toasts); the reliability fixes above; `parley sim` CLI mode.
+view, results, toasts); the reliability fixes above; `parley sim` CLI mode. Then: shadcn app
+sidebar; room **Map** tab (React Flow: agents as nodes, the game as the edge, an inspector panel
+for seats/game, a start bar); **Assign me** (one person takes the open seat, `Participant.owner`,
+`seat_of` on seat/ready); the room **assistant** (`api/assistant.py`): a chat column built on
+assistant-ui that acts with the person's token through JSON actions, streamed as NDJSON.
+
+Assistant notes: Qwen2.5-72B costs all 4 Featherless units, so it falls back to phi-4 when a
+match is running (`PARLEY_ASSISTANT_MODEL` / `_FALLBACK_MODEL`). Its replies are not cached.
+`next.config.ts` raises `proxyTimeout` because answers take over a minute. Vendored
+`src/components/assistant-ui/` is excluded from lint; update it with `assistant-ui add`.
+Run the API with `PYTHONPATH=src` (as the Makefile does) if `No module named 'parley'`.
 
 Open / ideas, roughly in order:
 1. Flag degenerate provider output separately from genuine forfeits.
 2. Metric for offers/acceptances beyond the agent's own reservation value.
 3. Match tab: while a match runs, the start form shows the viewer's own runs value.
-4. Human playing a seat (needed for human baselines); study view comparing matches.
-5. Butler font files aren't in the repo; titles fall back to Fraunces.
+4. Rooms with more than two agents and a game per connection (the map is ready for it).
+5. Human playing a seat (needed for human baselines); study view comparing matches.
+6. Persist map positions, the assistant chat and the sidebar's collapsed state.
+7. Butler font files aren't in the repo; titles fall back to Fraunces.

@@ -29,7 +29,7 @@ export default function Home() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-8 px-4 py-20">
+    <div className="mx-auto flex w-full max-w-xl flex-1 flex-col justify-center gap-8 px-4 py-20">
       <div>
         <p className="label-mono text-brand">Research</p>
         <h1 className="display-title mt-3 text-4xl sm:text-5xl">Parley</h1>
@@ -64,6 +64,6 @@ export default function Home() {
           </Button>
         </CardContent>
       </Card>
-    </main>
+    </div>
   );
 }

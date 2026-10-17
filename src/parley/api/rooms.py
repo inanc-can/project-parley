@@ -42,6 +42,7 @@ class Participant(BaseModel):
     seat: Seat | None = None
     ready: bool = False
     reveal: bool = True  # show my setup to the others after a match
+    owner: str | None = None  # token of the person controlling this seat, if it isn't its own
 
 
 class RoomSettings(BaseModel):
@@ -68,6 +69,19 @@ class Room(BaseModel):
             if p.token == token:
                 return p
         raise RoomError(403, "you are not in this room")
+
+    def acting(self, token: str | None, seat_of: str | None) -> Participant:
+        """The participant `token` acts as: itself, or a seat it took with `assign_self`."""
+        me = self.participant(token)
+        if seat_of is None or seat_of == me.name:
+            return me
+        for p in self.participants:
+            if p.name == seat_of and p.owner == token:
+                return p
+        raise RoomError(403, f"you don't control the seat {seat_of!r}")
+
+    def owned_by(self, token: str | None) -> list[Participant]:
+        return [p for p in self.participants if p.owner is not None and p.owner == token]
 
     def is_host(self, token: str | None) -> bool:
         return token == self.host_token
@@ -114,6 +128,33 @@ def join(room: Room, name: str) -> str:
     return token
 
 
+def assign_self(room: Room, token: str) -> str:
+    """Take an open seat yourself, so one person can run agents against each other."""
+    me = room.participant(token)
+    if len(room.participants) >= room.capacity():
+        raise RoomError(409, "there is no open seat")
+    n = 2
+    while any(p.name.lower() == f"{me.name} {n}".lower() for p in room.participants):
+        n += 1
+    name = f"{me.name} {n}"
+    room.participants.append(Participant(token=secrets.token_urlsafe(16), name=name, owner=token))
+    if token in room.agreed:  # you already agreed for yourself, so for this seat too
+        room.agreed.append(room.participants[-1].token)
+        _lock_if_all_agreed(room)
+    return name
+
+
+def release_seat(room: Room, token: str, seat_of: str) -> None:
+    seat = room.acting(token, seat_of)
+    if seat.owner is None:
+        raise RoomError(409, "you can only release a seat you took with Assign me")
+    room.participants.remove(seat)
+    room.agreed = [t for t in room.agreed if t != seat.token]
+    room.locked = False  # the room is no longer full
+    for p in room.participants:
+        p.ready = False
+
+
 def update_game(room: Room, token: str, spec: GameSpec) -> None:
     me = room.participant(token)
     if room.locked:
@@ -130,8 +171,13 @@ def agree(room: Room, token: str, version: int) -> None:
     room.participant(token)
     if version != room.version:
         raise RoomError(409, f"the game changed (now version {room.version}); review it again")
-    if token not in room.agreed:
-        room.agreed.append(token)
+    for t in [token] + [p.token for p in room.owned_by(token)]:  # your seats agree with you
+        if t not in room.agreed:
+            room.agreed.append(t)
+    _lock_if_all_agreed(room)
+
+
+def _lock_if_all_agreed(room: Room) -> None:
     everyone = {p.token for p in room.participants}
     if len(room.participants) == room.capacity() and everyone <= set(room.agreed):
         room.locked = True
@@ -144,8 +190,8 @@ def unlock(room: Room, token: str) -> None:
         p.ready = False
 
 
-def set_seat(room: Room, token: str, seat: Seat, reveal: bool) -> None:
-    me = room.participant(token)
+def set_seat(room: Room, token: str, seat: Seat, reveal: bool, seat_of: str | None = None) -> None:
+    me = room.acting(token, seat_of)
     models = []
     if isinstance(seat, LLMSeat):
         models = [seat.model]
@@ -157,8 +203,8 @@ def set_seat(room: Room, token: str, seat: Seat, reveal: bool) -> None:
     me.seat, me.reveal, me.ready = seat, reveal, False
 
 
-def set_ready(room: Room, token: str, ready: bool) -> None:
-    me = room.participant(token)
+def set_ready(room: Room, token: str, ready: bool, seat_of: str | None = None) -> None:
+    me = room.acting(token, seat_of)
     if ready and not room.locked:
         raise RoomError(409, "agree on the game first")
     if ready and me.seat is None:
@@ -204,6 +250,11 @@ def room_view(room: Room, token: str) -> dict[str, Any]:
             "ready": me.ready,
             "reveal": me.reveal,
         },
+        # Seats this person took with "Assign me": they see and edit these like their own.
+        "controlled": [
+            {"name": p.name, "seat": p.seat, "ready": p.ready, "reveal": p.reveal}
+            for p in room.owned_by(token)
+        ],
         "participants": [
             {
                 "name": p.name,
@@ -211,6 +262,7 @@ def room_view(room: Room, token: str) -> dict[str, Any]:
                 "has_seat": p.seat is not None,
                 "agreed": p.token in room.agreed,
                 "is_host": room.is_host(p.token),
+                "owner": next((o.name for o in room.participants if o.token == p.owner), None),
             }
             for p in room.participants
         ],
@@ -228,10 +280,11 @@ def room_view(room: Room, token: str) -> dict[str, Any]:
     }
 
 
-def visible_episode(record: EpisodeRecord, viewer: str, revealed: set[str]) -> dict[str, Any]:
-    """Hide the private reasoning and setup of seats that are neither the viewer's nor revealed."""
+def visible_episode(record: EpisodeRecord, mine: set[str], revealed: set[str]) -> dict[str, Any]:
+    """Hide the private reasoning and setup of seats that are neither the viewer's (`mine`: their
+    own seat plus any they took with "Assign me") nor revealed."""
     data = record.model_dump(mode="json")
-    can_see = revealed | {viewer}
+    can_see = revealed | mine
     for t in data["turns"]:
         if record.assignment[t["role"]] not in can_see:
             t["reasoning"] = t["deliberation"] = t["raw_output"] = None

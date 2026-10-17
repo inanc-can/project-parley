@@ -9,10 +9,12 @@ from typing import Annotated, Any
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
+from pydantic_core import to_jsonable_python
 from sse_starlette.sse import EventSourceResponse
 
+from parley.api import assistant as A
 from parley.api import rooms as R
 from parley.api.events import MatchEvents
 from parley.core.baselines import reference_solutions
@@ -38,14 +40,24 @@ class VersionBody(BaseModel):
 class SeatBody(BaseModel):
     seat: Seat
     reveal: bool = True
+    seat_of: str | None = None  # a seat you took with "Assign me"; default is your own
 
 
 class ReadyBody(BaseModel):
     ready: bool
+    seat_of: str | None = None
+
+
+class SeatOfBody(BaseModel):
+    seat_of: str
 
 
 class StartBody(BaseModel):
     runs: int | None = None
+
+
+class ChatBody(BaseModel):
+    messages: list[A.ChatMessage]
 
 
 def create_app(store: Store | None = None, client: LLMClient | None = None) -> FastAPI:
@@ -126,12 +138,22 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
     @app.put("/api/rooms/{room_id}/seat")
     async def put_seat(room_id: str, body: SeatBody, x_parley_token: Token = None):
         return await mutate(
-            room_id, lambda r: R.set_seat(r, x_parley_token, body.seat, body.reveal)
+            room_id, lambda r: R.set_seat(r, x_parley_token, body.seat, body.reveal, body.seat_of)
         )
 
     @app.post("/api/rooms/{room_id}/ready")
     async def ready(room_id: str, body: ReadyBody, x_parley_token: Token = None):
-        return await mutate(room_id, lambda r: R.set_ready(r, x_parley_token, body.ready))
+        return await mutate(
+            room_id, lambda r: R.set_ready(r, x_parley_token, body.ready, body.seat_of)
+        )
+
+    @app.post("/api/rooms/{room_id}/seats/assign")
+    async def assign_self(room_id: str, x_parley_token: Token = None):
+        return await mutate(room_id, lambda r: {"name": R.assign_self(r, x_parley_token)})
+
+    @app.post("/api/rooms/{room_id}/seats/release")
+    async def release_seat(room_id: str, body: SeatOfBody, x_parley_token: Token = None):
+        return await mutate(room_id, lambda r: R.release_seat(r, x_parley_token, body.seat_of))
 
     @app.put("/api/rooms/{room_id}/settings")
     async def put_settings(room_id: str, settings: R.RoomSettings, x_parley_token: Token = None):
@@ -143,15 +165,13 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
         return await mutate(room_id, apply)
 
     # --- matches ---
-    @app.post("/api/rooms/{room_id}/matches")
-    async def start(
-        room_id: str, body: StartBody, tasks: BackgroundTasks, x_parley_token: Token = None
-    ):
+    async def launch(room_id: str, token: str | None, runs: int | None, tasks: BackgroundTasks):
+        """Start a match in the background; the endpoint and the assistant both use this."""
         match_id = uuid.uuid4().hex[:12]
 
         def prepare(r: R.Room):
-            r.participant(x_parley_token)
-            cfg = R.match_config(r, body.runs)
+            r.participant(token)
+            cfg = R.match_config(r, runs)
             r.match_ids.append(match_id)
             return {"match_id": match_id, "cfg": cfg}
 
@@ -170,6 +190,54 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
 
         tasks.add_task(run)
         return prepared
+
+    @app.post("/api/rooms/{room_id}/matches")
+    async def start(
+        room_id: str, body: StartBody, tasks: BackgroundTasks, x_parley_token: Token = None
+    ):
+        return await launch(room_id, x_parley_token, body.runs, tasks)
+
+    # --- assistant ---
+    def assistant_ops(room_id: str, token: str | None, tasks: BackgroundTasks) -> A.RoomOps:
+        load(room_id).participant(token)  # only people in the room
+        return A.RoomOps(
+            room_id=room_id,
+            token=token,
+            load=lambda: load(room_id),
+            mutate=lambda fn: mutate(room_id, fn),
+            start_match=lambda runs: launch(room_id, token, runs, tasks),
+            match_summary=lambda match_id: R.match_summary(store.episodes(match_id)),
+        )
+
+    @app.post("/api/rooms/{room_id}/assistant")
+    async def assistant(
+        room_id: str, body: ChatBody, tasks: BackgroundTasks, x_parley_token: Token = None
+    ):
+        ops = assistant_ops(room_id, x_parley_token, tasks)
+        try:
+            steps = await A.chat(ops, body.messages, client)
+        except Exception as e:  # provider down or over its limits: say so instead of a bare 500
+            raise HTTPException(502, f"The assistant model didn't answer: {str(e)[:300]}") from e
+        return {"steps": steps, "model": A.assistant_model()}
+
+    @app.post("/api/rooms/{room_id}/assistant/stream")
+    async def assistant_stream(
+        room_id: str, body: ChatBody, tasks: BackgroundTasks, x_parley_token: Token = None
+    ):
+        """The same answer as /assistant, as newline-delimited JSON events while it happens."""
+        ops = assistant_ops(room_id, x_parley_token, tasks)
+
+        async def gen():
+            try:
+                async for e in A.chat_events(ops, body.messages, client):
+                    yield json.dumps(e, default=to_jsonable_python) + "\n"
+            except Exception as e:  # provider down or over its limits: tell the chat
+                msg = f"The assistant model didn't answer: {str(e)[:300]}"
+                yield json.dumps({"type": "error", "message": msg}) + "\n"
+
+        # no-transform: Next's proxy would otherwise gzip and hold back the stream.
+        headers = {"Cache-Control": "no-cache, no-transform"}
+        return StreamingResponse(gen(), media_type="application/x-ndjson", headers=headers)
 
     @app.get("/api/rooms/{room_id}/matches")
     def list_matches(room_id: str, x_parley_token: Token = None):
@@ -193,9 +261,10 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
             raise HTTPException(404, "no such match in this room")
         records = store.episodes(match_id)
         revealed = {p.name for p in room.participants if p.reveal}
+        mine = {me.name} | {p.name for p in room.owned_by(x_parley_token)}
         return {
             "summary": R.match_summary(records),
-            "episodes": [R.visible_episode(rec, me.name, revealed) for rec in records],
+            "episodes": [R.visible_episode(rec, mine, revealed) for rec in records],
             "status": next(
                 (m["status"] for m in store.matches(room_id) if m["id"] == match_id), None
             ),

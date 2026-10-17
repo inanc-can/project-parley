@@ -22,14 +22,16 @@ function defaultSeat(kind: Seat["kind"], model: string, strategy = ""): Seat {
   return { kind: "llm", model, strategy, temperature: 0.7 };
 }
 
-export function SeatEditor({ room, onChange }: { room: RoomView; onChange: () => void }) {
+/** Edits your own seat, or with `seatOf` a seat you took with "Assign me". */
+export function SeatEditor({ room, onChange, seatOf }: { room: RoomView; onChange: () => void; seatOf?: string }) {
   const models = room.settings.allowed_models;
+  const mine = (seatOf && room.controlled.find((c) => c.name === seatOf)) || room.me;
   // Unsaved edits override what is saved on the server.
   const [localSeat, setLocalSeat] = useState<Seat | null>(null);
   const [localReveal, setLocalReveal] = useState<boolean | null>(null);
-  const seat = localSeat ?? room.me.seat ?? defaultSeat("llm", models[0] ?? "");
-  const reveal = localReveal ?? room.me.reveal;
-  const dirty = localSeat !== null || localReveal !== null || !room.me.seat;
+  const seat = localSeat ?? mine.seat ?? defaultSeat("llm", models[0] ?? "");
+  const reveal = localReveal ?? mine.reveal;
+  const dirty = localSeat !== null || localReveal !== null || !mine.seat;
   const update = (s: Seat) => setLocalSeat(s);
   const strategy = "strategy" in seat ? seat.strategy : "";
   const modelOptions = models.map((m) => ({ value: m, label: m.replace(/^featherless_ai\//, "") }));
@@ -39,15 +41,19 @@ export function SeatEditor({ room, onChange }: { room: RoomView; onChange: () =>
   }
 
 
-  const others = room.participants.filter((p) => p.name !== room.me.name);
+  const yours = new Set([room.me.name, ...room.controlled.map((c) => c.name)]);
+  const others = room.participants.filter((p) => !yours.has(p.name));
 
   return (
-    <div className="grid gap-4 md:grid-cols-3">
-      <Card className="md:col-span-2">
+    <div className="grid gap-4 @3xl:grid-cols-3">
+      <Card className="@3xl:col-span-2">
         <CardHeader>
-          <CardTitle>Your agent</CardTitle>
+          <CardTitle>{seatOf ? `Your agent · ${seatOf}` : "Your agent"}</CardTitle>
           <CardDescription>
-            Only you can see this. It plays every role in turn, since roles swap between runs.
+            {seatOf
+              ? "A seat you took yourself, so you can run your own agents against each other."
+              : "Only you can see this."}{" "}
+            It plays every role in turn, since roles swap between runs.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -72,7 +78,7 @@ export function SeatEditor({ room, onChange }: { room: RoomView; onChange: () =>
           )}
 
           {seat.kind === "team" && (
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 @3xl:grid-cols-3">
               {(["proposer_model", "critic_model", "decider_model"] as const).map((k) => (
                 <div key={k} className="flex flex-col gap-2">
                   <Label>{k.replace("_model", "")}</Label>
@@ -142,7 +148,7 @@ export function SeatEditor({ room, onChange }: { room: RoomView; onChange: () =>
               onClick={() =>
                 run(
                   async () => {
-                    await api.putSeat(room.id, seat, reveal);
+                    await api.putSeat(room.id, seat, reveal, seatOf);
                     setLocalSeat(null);
                     setLocalReveal(null);
                   },
@@ -154,18 +160,27 @@ export function SeatEditor({ room, onChange }: { room: RoomView; onChange: () =>
               Save agent
             </Button>
             <Button
-              disabled={dirty || !room.me.seat || !room.game.locked}
-              variant={room.me.ready ? "secondary" : "default"}
+              disabled={dirty || !mine.seat || !room.game.locked}
+              variant={mine.ready ? "secondary" : "default"}
               onClick={() =>
                 run(
-                  () => api.ready(room.id, !room.me.ready),
-                  room.me.ready ? "Marked as not ready" : "You're ready",
+                  () => api.ready(room.id, !mine.ready, seatOf),
+                  mine.ready ? "Marked as not ready" : seatOf ? `${seatOf} is ready` : "You're ready",
                   "Couldn't change readiness",
                 )
               }
             >
-              {room.me.ready ? "Undo ready" : "I'm ready"}
+              {mine.ready ? "Undo ready" : "I'm ready"}
             </Button>
+            {seatOf && (
+              <Button
+                variant="ghost"
+                className="ml-auto"
+                onClick={() => run(() => api.releaseSeat(room.id, seatOf), "Seat released", "Couldn't release the seat")}
+              >
+                Release seat
+              </Button>
+            )}
           </div>
           {!room.game.locked && <p className="text-muted-foreground text-sm">Agree on the game first to get ready.</p>}
         </CardContent>
