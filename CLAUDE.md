@@ -72,6 +72,14 @@ logged. `edit_game` refuses surplus games whose roles lost their `reservation`.
 `src/components/assistant-ui/` is excluded from lint; update it with `assistant-ui add`.
 Run the API with `PYTHONPATH=src` (as the Makefile does) if `No module named 'parley'`.
 
+Redesign (2026-10-18, stage 1 of 6 done): the `alternating` protocol became `Conversation`
+(`kind: "conversation"`). Natural turn-taking is the default: agents may pass (`{"type": "pass"}`
+or an empty reply), follow up (`"follow_up": true`, at most `max_follow_ups` in a row) or walk
+away; it ends on a deal, a walk-away, `silence` (everyone passes in a row), or a hidden safety cap
+(`limit`, with `show_limit` false). `strict_alternation()` is the old setup and every template
+uses it; specs saved as `alternating` load as strict. Later stages: seat memory/history and cost,
+richer scenes, briefings, reruns, a harness builder (decisions in Claude's project memory).
+
 Open / ideas, roughly in order:
 1. Flag degenerate provider output separately from genuine forfeits.
 2. Metric for offers/acceptances beyond the agent's own reservation value.

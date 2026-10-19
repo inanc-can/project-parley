@@ -8,7 +8,7 @@ from parley.agents.scripted import SilentAgent
 from parley.agents.team import Critic, TeamAgent
 from parley.core.agent import TurnError
 from parley.core.engine import run_episode
-from parley.core.spec import Alternating
+from parley.core.spec import Conversation, strict_alternation
 from parley.judge import Judge, apply_judgment
 from parley.llm.cache import Cache
 from parley.llm.client import LLMClient, LLMResponse
@@ -67,7 +67,7 @@ def test_parse_turn_accepts_bare_action_string():
 
 async def test_llm_agent_makes_offer_and_sees_private_brief():
     client = FakeClient(reply("I ask 10,500.", {"type": "offer", "terms": {"price": 10500}}))
-    spec = buy_sell().model_copy(update={"protocol": Alternating(max_messages=1)})
+    spec = buy_sell().model_copy(update={"protocol": strict_alternation(1)})
     turns, _ = await run_episode(
         spec, {"seller": LLMAgent(client, "m", strategy="Anchor high."), "buyer": SilentAgent()}
     )
@@ -82,7 +82,7 @@ async def test_malformed_output_is_retried_with_feedback():
     client = FakeClient(
         "I'd like 10k please", reply("10k", {"type": "offer", "terms": {"price": 10000}})
     )
-    spec = buy_sell().model_copy(update={"protocol": Alternating(max_messages=1)})
+    spec = buy_sell().model_copy(update={"protocol": strict_alternation(1)})
     turns, _ = await run_episode(spec, {"seller": LLMAgent(client, "m"), "buyer": SilentAgent()})
     assert turns[0].retries == 1
     assert "not a JSON object" in client.prompts[1][1]["content"]
@@ -113,7 +113,7 @@ async def test_team_agent_logs_deliberation():
         reply("11k", {"type": "offer", "terms": {"price": 11000}}),  # decider
     )
     team = TeamAgent(LLMAgent(client, "big"), Critic(client, "small"))
-    spec = buy_sell().model_copy(update={"protocol": Alternating(max_messages=1)})
+    spec = buy_sell().model_copy(update={"protocol": strict_alternation(1)})
     turns, _ = await run_episode(spec, {"seller": team, "buyer": SilentAgent()})
     t = turns[0]
     assert t.action.terms == {"price": 11000}
@@ -160,3 +160,21 @@ async def test_judge_extracts_words_only_deal():
 
     walked = Outcome(end_reason="walk_away", payoffs={"seller": 0, "buyer": 0})
     assert apply_judgment(spec, walked, judgment).deal is None  # a formal walk-away stands
+
+
+def test_parse_turn_reads_follow_up_and_allows_an_empty_pass():
+    t = parse_turn('{"message": "and also", "action": null, "follow_up": true}', "buyer")
+    assert t.follow_up is True
+    t = parse_turn(
+        '{"reasoning": "wait", "message": "", "action": null}', "buyer", allow_empty=True
+    )
+    assert t.message == "" and t.action is None
+
+
+async def test_natural_prompt_explains_passing_and_follow_ups():
+    client = FakeClient(reply("Hello."))
+    spec = buy_sell().model_copy(update={"protocol": Conversation(max_messages=1)})
+    await run_episode(spec, {"seller": LLMAgent(client, "m"), "buyer": SilentAgent()})
+    system, user = (m["content"] for m in client.prompts[0])
+    assert "stay silent (pass)" in system and '"follow_up"' in system
+    assert '{"type": "pass"}' in user and "Messages left" not in user

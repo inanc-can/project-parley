@@ -7,7 +7,7 @@ from typing import Any
 from parley.agents.parsing import extract_json
 from parley.core.agent import TurnError
 from parley.core.scoring import InvalidTerms, deal_payoffs, validate_terms
-from parley.core.spec import GameSpec, SurplusScoring, ValuationsScoring
+from parley.core.spec import PASS, GameSpec, SurplusScoring, ValuationsScoring
 from parley.core.types import Deal, Outcome, Turn
 from parley.llm.client import LLMClient
 
@@ -53,7 +53,9 @@ class Judge:
             for r in spec.roles
         )
         transcript = "\n".join(
-            f"{t.role}: {t.message}"
+            f"{t.role}: (stays silent)"
+            if t.action and t.action.type == PASS
+            else f"{t.role}: {t.message}"
             + (f"  ACTION: {json.dumps(t.action.model_dump())}" if t.action else "")
             for t in turns
         )
@@ -84,7 +86,8 @@ def apply_judgment(spec: GameSpec, outcome: Outcome, judgment: dict[str, Any]) -
     outcome.judge = judgment
     deal_scoring = isinstance(spec.scoring, SurplusScoring | ValuationsScoring)
     if (
-        outcome.end_reason == "limit"  # ran out of messages: a formal walk-away or reject stands
+        # Ran out of messages or fell silent: a formal walk-away or reject stands.
+        outcome.end_reason in ("limit", "silence")
         and outcome.deal is None
         and deal_scoring
         and judgment.get("deal_reached") is True

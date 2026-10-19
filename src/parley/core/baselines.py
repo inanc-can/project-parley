@@ -9,7 +9,7 @@ from typing import Any
 
 from parley.core.scoring import deal_payoffs, role_payoff
 from parley.core.spec import (
-    Alternating,
+    Conversation,
     GameSpec,
     MatrixScoring,
     SimultaneousRounds,
@@ -31,7 +31,7 @@ def reference_solutions(spec: GameSpec) -> dict[str, Any]:
 
 def is_ultimatum(spec: GameSpec) -> bool:
     p = spec.protocol
-    return isinstance(p, Alternating) and p.reject_ends and p.max_messages == 2
+    return isinstance(p, Conversation) and p.reject_ends and p.max_messages == 2
 
 
 def _surplus(spec: GameSpec, s: SurplusScoring) -> dict[str, Any]:

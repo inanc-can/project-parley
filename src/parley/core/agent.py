@@ -40,7 +40,8 @@ class RoleView(BaseModel):
     must_act: bool  # an action is required this turn (simultaneous move)
     transcript: list[PublicTurn]
     standing_offer: StandingOffer | None = None
-    messages_left: int | None = None
+    messages_left: int | None = None  # None when the limit is hidden
+    can_follow_up: bool = False  # natural turn-taking: may ask to speak again right away
     round: int | None = None
     total_rounds: int | None = None  # None when the horizon is hidden
     phase: Literal["talk", "move"] | None = None

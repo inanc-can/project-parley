@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from parley.core.spec import GameSpec, MatrixScoring, SurplusScoring, ValuationsScoring
+from parley.core.spec import PASS, GameSpec, MatrixScoring, SurplusScoring, ValuationsScoring
 from parley.core.types import Outcome, Turn
 
 
@@ -10,7 +10,8 @@ def episode_metrics(
     spec: GameSpec, turns: list[Turn], outcome: Outcome, refs: dict[str, Any]
 ) -> dict[str, float]:
     m: dict[str, float] = {
-        "messages": len(turns),
+        "messages": sum(not (t.action and t.action.type == PASS) for t in turns),
+        "passes": sum(bool(t.action and t.action.type == PASS) for t in turns),
         "retries": sum(t.retries for t in turns),
         "tokens": sum(sum(t.tokens.values()) for t in turns),
         "deal": float(outcome.deal is not None),

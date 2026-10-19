@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from parley.core.spec import Alternating, GameSpec, JudgeOnlyScoring, Role
+from parley.core.spec import Conversation, GameSpec, JudgeOnlyScoring, Role
 from parley.matches.runner import EpisodeRecord, MatchConfig
 from parley.matches.seats import LLMSeat, Seat, TeamSeat
 
@@ -97,7 +97,7 @@ def blank_spec() -> GameSpec:
         shared_context="",
         roles=[Role(name="side_a"), Role(name="side_b")],
         scoring=JudgeOnlyScoring(),
-        protocol=Alternating(max_messages=12),
+        protocol=Conversation(),  # natural turn-taking, hidden safety cap
         runs=5,
     )
 

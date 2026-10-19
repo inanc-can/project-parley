@@ -1,6 +1,6 @@
 """GameSpec: the shared, co-authored definition of a game."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -68,13 +68,28 @@ Scoring = Annotated[
 # --- Protocols -------------------------------------------------------------
 
 
-class Alternating(BaseModel):
-    """Roles speak in turn. Ends on accept, walk away, (optionally) reject, or the message limit."""
+class Conversation(BaseModel):
+    """One continuous conversation; any message may carry an offer, accept, reject or walk-away.
 
-    kind: Literal["alternating"] = "alternating"
-    max_messages: int = 20
+    "natural" turn-taking: a turn may also pass (stay silent) or ask to follow up (speak again
+    right away, at most `max_follow_ups` times in a row). Ends on accept, walk away, (optionally)
+    reject, everyone passing in a row ("silence"), or `max_messages` ("limit"). With
+    `show_limit` False the cap is a safety net the agents are not told about.
+    "strict": roles alternate, one message each, and the cap is shown (the classic setup).
+    """
+
+    kind: Literal["conversation"] = "conversation"
+    turn_taking: Literal["natural", "strict"] = "natural"
+    max_messages: int = 40  # every turn counts, passes included
+    show_limit: bool = False  # tell agents how many messages are left
+    max_follow_ups: int = 2  # natural only
     first: int = 0  # index into roles
     reject_ends: bool = False  # ultimatum-style: a rejection ends the game with no deal
+
+
+def strict_alternation(max_messages: int = 20, **kw) -> Conversation:
+    """The classic alternating-offers preset: strict turns and a visible message limit."""
+    return Conversation(turn_taking="strict", show_limit=True, max_messages=max_messages, **kw)
 
 
 class SimultaneousRounds(BaseModel):
@@ -87,9 +102,10 @@ class SimultaneousRounds(BaseModel):
     show_horizon: bool = True  # tell players how many rounds there are
 
 
-Protocol = Annotated[Alternating | SimultaneousRounds, Field(discriminator="kind")]
+Protocol = Annotated[Conversation | SimultaneousRounds, Field(discriminator="kind")]
 
-ALTERNATING_ACTIONS = ["offer", "accept", "reject", "walk_away"]
+CONVERSATION_ACTIONS = ["offer", "accept", "reject", "walk_away"]
+PASS = "pass"  # natural turn-taking: stay silent this turn (not a formal decision)
 
 
 class GameSpec(BaseModel):
@@ -98,11 +114,29 @@ class GameSpec(BaseModel):
     roles: list[Role]
     deal_fields: list[DealField] = Field(default_factory=list)
     scoring: Scoring
-    protocol: Protocol = Field(default_factory=Alternating)
+    protocol: Protocol = Field(default_factory=Conversation)
     # role name -> allowed action types; None means every action the protocol offers
     allowed_actions: dict[str, list[str]] | None = None
     runs: int = 1
     judge_rubric: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _upgrade_protocol(cls, data: Any) -> Any:
+        """Specs saved before 2026-10-18 use {"kind": "alternating"}: the strict preset."""
+        if isinstance(data, dict):
+            p = data.get("protocol")
+            if isinstance(p, dict) and p.get("kind") == "alternating":
+                data = {
+                    **data,
+                    "protocol": {
+                        **p,
+                        "kind": "conversation",
+                        "turn_taking": "strict",
+                        "show_limit": True,
+                    },
+                }
+        return data
 
     @model_validator(mode="after")
     def _check(self) -> "GameSpec":
@@ -130,11 +164,10 @@ class GameSpec(BaseModel):
         return [r.name for r in self.roles]
 
     def actions_for(self, role: str) -> list[str]:
-        base = (
-            ALTERNATING_ACTIONS
-            if isinstance(self.protocol, Alternating)
-            else list(self.protocol.moves)
-        )
+        p = self.protocol
+        base = CONVERSATION_ACTIONS if isinstance(p, Conversation) else list(p.moves)
         if self.allowed_actions and role in self.allowed_actions:
-            return [a for a in base if a in self.allowed_actions[role]]
+            base = [a for a in base if a in self.allowed_actions[role]]
+        if isinstance(p, Conversation) and p.turn_taking == "natural":
+            base = [*base, PASS]  # silence is always allowed; it is not a decision
         return base

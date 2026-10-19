@@ -4,14 +4,15 @@ import json
 from typing import Any
 
 from parley.core.agent import RoleView, TurnError
-from parley.core.spec import SimultaneousRounds
+from parley.core.spec import PASS, SimultaneousRounds
 from parley.core.types import Action, Turn
 
 ACTION_HELP = {
     "offer": 'propose terms: {"type": "offer", "terms": {...every deal field...}}',
     "accept": 'accept the other side\'s standing offer: {"type": "accept"}',
     "reject": 'reject the other side\'s standing offer: {"type": "reject"}',
-    "walk_away": 'end the negotiation with no deal: {"type": "walk_away"}',
+    "walk_away": 'walk away: end the conversation with no deal: {"type": "walk_away"}',
+    PASS: 'stay silent this turn (leave "message" empty): {"type": "pass"}',
 }
 
 
@@ -46,19 +47,35 @@ def render_rules(view: RoleView) -> str:
             f"The game lasts {horizon}. Each round has a talk phase (messages only) and then a "
             f"move phase where everyone picks one of {p.moves} at the same time."
         )
-    else:
+    elif p.turn_taking == "strict":
         lines.append(
             "Players take turns sending messages. A message may carry one formal action. "
             "Only formal actions count: a deal exists only when someone formally accepts "
             "a standing offer."
         )
+    else:
+        limit = f" It lasts at most {p.max_messages} turns." if p.show_limit else ""
+        lines.append(
+            "This is a conversation, as between people. On your turn you may say something, "
+            "stay silent (pass), or say something and keep the floor to add more right after. "
+            "Any message may carry one formal action, at any point in the conversation. "
+            "Only formal actions count: a deal exists only when someone formally accepts "
+            "a standing offer. The conversation ends when an offer is accepted, someone walks "
+            f"away, or everyone stays silent in a row.{limit}"
+        )
+    natural = getattr(p, "turn_taking", None) == "natural"
     lines += [
         "",
         "## Reply format",
         "Reply with one JSON object and nothing else:",
         '{"reasoning": "<private thinking, never shown to anyone>",',
         ' "message": "<what you say to the other side>",',
-        ' "action": null or an action object}',
+        ' "action": null or an action object'
+        + (
+            ',\n "follow_up": false or true to speak again right after this message}'
+            if natural
+            else "}"
+        ),
     ]
     return "\n".join(lines)
 
@@ -69,6 +86,9 @@ def render_state(view: RoleView) -> str:
         lines.append("(nothing yet — you speak first)")
     for t in view.transcript:
         where = f"[round {t.round} {t.phase}] " if t.round else ""
+        if t.action and t.action.type == PASS:
+            lines.append(f"{where}{t.role}: (stays silent)")
+            continue
         act = f"  ACTION: {json.dumps(t.action.model_dump())}" if t.action else ""
         lines.append(f"{where}{t.role}: {t.message}{act}")
     if view.move_history:
@@ -95,6 +115,10 @@ def render_state(view: RoleView) -> str:
     else:
         lines.append("Allowed actions (or null for just talking):")
         lines += [f"- {ACTION_HELP.get(a, a)}" for a in view.allowed_actions]
+    if view.can_follow_up:
+        lines.append('To add another message right after this one, set "follow_up": true.')
+    elif PASS in view.allowed_actions:
+        lines.append("You cannot keep the floor this time: the other side speaks next.")
     return "\n".join(lines)
 
 
@@ -123,7 +147,8 @@ def extract_json(text: str) -> dict[str, Any]:
     raise TurnError("reply was not a JSON object. Reply with exactly one JSON object.")
 
 
-def parse_turn(text: str, role: str) -> Turn:
+def parse_turn(text: str, role: str, allow_empty: bool = False) -> Turn:
+    """`allow_empty`: an empty reply is a valid turn (natural turn-taking reads it as a pass)."""
     data = extract_json(text)
     if "message" not in data and data.get("action") in (None, ""):
         raise TurnError('the JSON object has no "message" key. Put every key in one object.')
@@ -143,12 +168,13 @@ def parse_turn(text: str, role: str) -> Turn:
         parsed = Action(type=action["type"], terms=terms)
     else:
         raise TurnError('"action" must be null or an object with a "type"')
-    if not message.strip() and parsed is None:
+    if not message.strip() and parsed is None and not allow_empty:
         raise TurnError('the reply was empty. Write a "message", or take an "action".')
     return Turn(
         role=role,
         message=message,
         action=parsed,
         reasoning=reasoning if isinstance(reasoning, str) else None,
+        follow_up=data.get("follow_up") is True,
         raw_output=text,
     )

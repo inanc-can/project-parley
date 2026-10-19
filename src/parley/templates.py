@@ -3,7 +3,6 @@
 from collections.abc import Callable
 
 from parley.core.spec import (
-    Alternating,
     DealField,
     GameSpec,
     MatrixScoring,
@@ -11,6 +10,7 @@ from parley.core.spec import (
     SimultaneousRounds,
     SurplusScoring,
     ValuationsScoring,
+    strict_alternation,
 )
 
 
@@ -43,7 +43,7 @@ def ultimatum(pie: int = 100) -> GameSpec:
         scoring=SurplusScoring(
             field="proposer_share", direction={"proposer": "up", "responder": "down"}
         ),
-        protocol=Alternating(max_messages=2, reject_ends=True),
+        protocol=strict_alternation(2, reject_ends=True),
         allowed_actions={"proposer": ["offer"], "responder": ["accept", "reject"]},
         runs=10,
     )
@@ -96,7 +96,7 @@ def buy_sell(seller_min: float = 8000, buyer_max: float = 9500) -> GameSpec:
         ],
         deal_fields=[DealField(name="price", min=0, description="sale price in dollars")],
         scoring=SurplusScoring(field="price", direction={"seller": "up", "buyer": "down"}),
-        protocol=Alternating(max_messages=20),
+        protocol=strict_alternation(20),
         runs=10,
     )
 
@@ -131,7 +131,7 @@ def multi_issue_trade() -> GameSpec:
             for i, n in items.items()
         ],
         scoring=ValuationsScoring(items=items, allocation_role="alex"),
-        protocol=Alternating(max_messages=12),
+        protocol=strict_alternation(12),
         runs=10,
     )
 

@@ -187,6 +187,10 @@ class LivePrinter:
             case "turn" if self.show_turns:
                 t = e["turn"]
                 action = ""
+                if (t.get("action") or {}).get("type") == "pass":
+                    who = escape(self.who(e["index"], t["role"]))
+                    console.print(f"{tag} [bold]{who}[/bold] [dim](stays silent)[/dim]")
+                    return
                 if a := t.get("action"):
                     terms = " ".join(f"{k}={v:g}" for k, v in (a.get("terms") or {}).items())
                     action = escape(f"[{a['type']}{' ' + terms if terms else ''}]")

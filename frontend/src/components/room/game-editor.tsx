@@ -427,15 +427,27 @@ function ProtocolCard({ draft, edit }: { draft: GameSpec; edit: (p: Partial<Game
       <CardHeader>
         <CardTitle>Turn rules</CardTitle>
         <CardDescription>
-          {p.kind === "alternating"
-            ? "Players take turns. Any message may carry an offer, accept, reject or walk away."
-            : "Each round: a short talk phase, then everyone moves at once."}
+          {p.kind === "simultaneous_rounds"
+            ? "Each round: a short talk phase, then everyone moves at once."
+            : p.turn_taking === "natural"
+              ? "A conversation, as between people: agents may stay silent, follow up, or walk away, and any message may carry an offer, accept or reject. It ends on a deal, a walk-away, or when everyone stays silent."
+              : "Strict turns: players alternate, one message each. Any message may carry an offer, accept, reject or walk away."}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap items-center gap-4">
-        {p.kind === "alternating" ? (
+        {p.kind === "conversation" ? (
           <>
-            <Label>Max messages</Label>
+            <Label>Turn-taking</Label>
+            <SimpleSelect
+              className="w-40"
+              value={p.turn_taking}
+              onChange={(v) => setP({ turn_taking: v as "natural" | "strict" })}
+              options={[
+                { value: "natural", label: "Natural" },
+                { value: "strict", label: "Strict turns" },
+              ]}
+            />
+            <Label>{p.show_limit ? "Max messages" : "Safety cap"}</Label>
             <Input
               className="w-24"
               type="number"
@@ -443,6 +455,22 @@ function ProtocolCard({ draft, edit }: { draft: GameSpec; edit: (p: Partial<Game
               value={p.max_messages}
               onChange={(e) => setP({ max_messages: Number(e.target.value) })}
             />
+            <Label className="flex items-center gap-2">
+              <Checkbox checked={p.show_limit} onCheckedChange={(c) => setP({ show_limit: c })} />
+              Agents see the limit
+            </Label>
+            {p.turn_taking === "natural" && (
+              <>
+                <Label>Follow-ups in a row</Label>
+                <Input
+                  className="w-20"
+                  type="number"
+                  min={0}
+                  value={p.max_follow_ups}
+                  onChange={(e) => setP({ max_follow_ups: Number(e.target.value) })}
+                />
+              </>
+            )}
             <Label>First speaker</Label>
             <SimpleSelect
               className="w-40"

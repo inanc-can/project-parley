@@ -16,7 +16,15 @@ export type Scoring =
   | { kind: "judge_only" };
 
 export type Protocol =
-  | { kind: "alternating"; max_messages: number; first: number; reject_ends: boolean }
+  | {
+      kind: "conversation";
+      turn_taking: "natural" | "strict";
+      max_messages: number;
+      show_limit: boolean;
+      max_follow_ups: number;
+      first: number;
+      reject_ends: boolean;
+    }
   | {
       kind: "simultaneous_rounds";
       rounds: number;
@@ -89,6 +97,7 @@ export type Turn = {
   message: string;
   action: Action | null;
   reasoning?: string | null;
+  follow_up?: boolean;
   deliberation?: Record<string, unknown>[] | null;
   retries?: number;
   round: number | null;

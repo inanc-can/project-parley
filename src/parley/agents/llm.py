@@ -2,6 +2,7 @@
 
 from parley.agents.parsing import parse_turn, render_rules, render_state
 from parley.core.agent import RoleView, TurnError
+from parley.core.spec import PASS
 from parley.core.types import Turn
 from parley.llm.client import LLMClient
 
@@ -39,7 +40,7 @@ class LLMAgent:
             seed=self.seed,
         )
         try:
-            turn = parse_turn(resp.text, view.role)
+            turn = parse_turn(resp.text, view.role, allow_empty=PASS in view.allowed_actions)
         except TurnError as e:
             e.raw_output = resp.text
             raise

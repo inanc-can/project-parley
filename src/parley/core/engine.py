@@ -5,8 +5,8 @@ from collections.abc import Awaitable, Callable
 
 from parley.core.agent import Agent, PublicTurn, RoleView, StandingOffer, TurnError
 from parley.core.scoring import InvalidTerms, deal_payoffs, matrix_payoffs, validate_terms
-from parley.core.spec import Alternating, GameSpec, SimultaneousRounds
-from parley.core.types import Deal, Outcome, Turn
+from parley.core.spec import PASS, Conversation, GameSpec, SimultaneousRounds
+from parley.core.types import Action, Deal, Outcome, Turn
 
 MAX_RETRIES = 3
 
@@ -25,8 +25,8 @@ async def run_episode(
     missing = set(spec.role_names()) - set(agents)
     if missing:
         raise ValueError(f"no agent for role(s) {sorted(missing)}")
-    if isinstance(spec.protocol, Alternating):
-        return await _alternating(spec, spec.protocol, agents, on_turn)
+    if isinstance(spec.protocol, Conversation):
+        return await _conversation(spec, spec.protocol, agents, on_turn)
     return await _simultaneous(spec, spec.protocol, agents, on_turn)
 
 
@@ -78,16 +78,19 @@ async def _get_turn(
     return None, failures
 
 
-# --- Alternating -------------------------------------------------------------
+# --- Conversation ------------------------------------------------------------
 
 
-async def _alternating(
-    spec: GameSpec, p: Alternating, agents: dict[str, Agent], on_turn: OnTurn
+async def _conversation(
+    spec: GameSpec, p: Conversation, agents: dict[str, Agent], on_turn: OnTurn
 ) -> tuple[list[Turn], Outcome]:
     names = spec.role_names()
+    natural = p.turn_taking == "natural"
     transcript: list[Turn] = []
     standing: StandingOffer | None = None
     idx = p.first
+    passes = 0  # passes in a row; everyone passing ends the conversation
+    follow_ups = 0  # follow-ups in a row by the current speaker
 
     def no_deal(reason, **kw) -> Outcome:
         return Outcome(end_reason=reason, payoffs=deal_payoffs(spec, None), **kw)
@@ -95,14 +98,23 @@ async def _alternating(
     for n in range(p.max_messages):
         role = names[idx]
         allowed = spec.actions_for(role)
+        can_follow_up = natural and follow_ups < p.max_follow_ups
 
         def validate(turn: Turn, role=role, allowed=allowed, standing=standing) -> Turn:
+            if natural and not turn.message.strip() and turn.action is None:
+                turn.action = Action(type=PASS)  # saying nothing is staying silent
             a = turn.action
             if a is None:
                 return turn
             if a.type not in allowed:
                 raise InvalidTurn(f"action {a.type!r} is not allowed; allowed: {allowed}")
-            if a.type in ("accept", "reject"):
+            if a.type == PASS:
+                if turn.message.strip():
+                    raise InvalidTurn(
+                        'a pass means saying nothing: leave "message" empty, or drop the pass'
+                    )
+                turn.follow_up = False
+            elif a.type in ("accept", "reject"):
                 if standing is None or standing.role == role:
                     raise InvalidTurn(f"there is no offer from another player to {a.type}")
                 if a.type == "accept":
@@ -118,16 +130,22 @@ async def _alternating(
             allowed_actions=allowed,
             must_act=False,
             standing_offer=standing,
-            messages_left=p.max_messages - n,
+            messages_left=p.max_messages - n if p.show_limit else None,
+            can_follow_up=can_follow_up,
         )
         turn, failures = await _get_turn(agents[role], view, validate)
         if turn is None:
             return transcript, no_deal("forfeit", forfeited_by=role, forfeit_attempts=failures)
+        if not can_follow_up:
+            turn.follow_up = False
         transcript.append(turn)
         if on_turn:
             await on_turn(turn)
 
         a = turn.action
+        passes = passes + 1 if a is not None and a.type == PASS else 0
+        if passes >= len(names):
+            return transcript, no_deal("silence")
         if a is not None:
             if a.type == "accept":
                 deal = Deal(terms=a.terms)
@@ -142,7 +160,11 @@ async def _alternating(
                 standing = None
             if a.type == "offer":
                 standing = StandingOffer(role=role, terms=a.terms)
-        idx = (idx + 1) % len(names)
+        if turn.follow_up:
+            follow_ups += 1
+        else:
+            follow_ups = 0
+            idx = (idx + 1) % len(names)
 
     return transcript, no_deal("limit")
 

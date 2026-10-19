@@ -19,6 +19,7 @@ class Turn(BaseModel):
     message: str = ""
     action: Action | None = None
     reasoning: str | None = None  # private; never shown to the other side
+    follow_up: bool = False  # natural turn-taking: the speaker asked to speak again right away
     deliberation: list[dict[str, Any]] | None = None  # TeamAgent internals
     raw_output: str | None = None
     retries: int = 0
@@ -27,8 +28,12 @@ class Turn(BaseModel):
     phase: Literal["talk", "move"] | None = None
 
 
-# "error": every attempt at the episode failed (provider errors); EpisodeRecord.error says why.
-EndReason = Literal["accept", "walk_away", "reject", "limit", "rounds_complete", "forfeit", "error"]
+# "silence": every role passed in a row. "limit": the message cap was hit (shown to the agents
+# or not; the spec says which). "error": every attempt at the episode failed (provider errors);
+# EpisodeRecord.error says why.
+EndReason = Literal[
+    "accept", "walk_away", "reject", "silence", "limit", "rounds_complete", "forfeit", "error"
+]
 
 
 class Deal(BaseModel):

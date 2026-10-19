@@ -30,6 +30,14 @@ export function Transcript({ turns, seatOf }: { turns: Turn[]; seatOf?: Record<s
       {turns.length === 0 && <p className="text-muted-foreground text-sm">No messages yet.</p>}
       {turns.map((t, i) => {
         const right = roles.indexOf(t.role) % 2 === 1;
+        if (t.action?.type === "pass")
+          return (
+            <p key={i} className={`text-muted-foreground px-3 text-xs italic ${right ? "text-right" : ""}`}>
+              {t.role}
+              {seatOf?.[t.role] && ` (${seatOf[t.role]})`} stays silent
+              {showReasoning && t.reasoning && <span className="block">{t.reasoning}</span>}
+            </p>
+          );
         return (
           <div key={i} className={`flex ${right ? "justify-end" : "justify-start"}`}>
             <div className={`max-w-[80%] rounded-lg border px-3 py-2 ${right ? "bg-muted" : "bg-background"}`}>
