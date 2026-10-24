@@ -2,6 +2,7 @@
 (header X-Parley-Token). The SSE stream takes it as ?token=: EventSource can't set headers."""
 
 import asyncio
+import base64
 import json
 import uuid
 from typing import Annotated, Any
@@ -14,11 +15,13 @@ from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 from sse_starlette.sse import EventSourceResponse
 
+from parley import files as F
+from parley import research as RS
 from parley.api import assistant as A
 from parley.api import rooms as R
 from parley.api.events import MatchEvents
 from parley.core.baselines import reference_solutions
-from parley.core.spec import GameSpec
+from parley.core.spec import GameSpec, SharedFile
 from parley.llm.cache import Cache
 from parley.llm.client import LLMClient
 from parley.matches.runner import run_match
@@ -58,6 +61,22 @@ class StartBody(BaseModel):
 
 class ChatBody(BaseModel):
     messages: list[A.ChatMessage]
+
+
+class FileBody(BaseModel):
+    name: str
+    mime: str = ""
+    data: str  # base64
+
+
+class SummaryBody(BaseModel):
+    files: list[SharedFile]
+    context: str = ""
+
+
+class ResearchBody(BaseModel):
+    topic: str
+    context: str = ""
 
 
 def create_app(store: Store | None = None, client: LLMClient | None = None) -> FastAPI:
@@ -126,6 +145,41 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
     @app.put("/api/rooms/{room_id}/game")
     async def put_game(room_id: str, spec: GameSpec, x_parley_token: Token = None):
         return await mutate(room_id, lambda r: R.update_game(r, x_parley_token, spec))
+
+    # --- shared files: converted here; they join the game when the draft is saved ---
+    @app.post("/api/rooms/{room_id}/files")
+    async def add_file(room_id: str, body: FileBody, x_parley_token: Token = None):
+        load(room_id).participant(x_parley_token)
+        try:
+            data = base64.b64decode(body.data, validate=True)
+        except ValueError:
+            raise HTTPException(400, "the file data isn't valid base64") from None
+        try:
+            return await F.to_shared_file(body.name, body.mime, data, client)
+        except F.FileError as e:
+            raise HTTPException(400, str(e)) from None
+        except Exception as e:  # the vision model failed
+            raise HTTPException(502, f"couldn't describe {body.name}: {e}") from None
+
+    @app.post("/api/rooms/{room_id}/files/summary")
+    async def summarise_files(room_id: str, body: SummaryBody, x_parley_token: Token = None):
+        load(room_id).participant(x_parley_token)
+        try:
+            return {"text": await F.summarise(body.files, body.context, client)}
+        except F.FileError as e:
+            raise HTTPException(400, str(e)) from None
+        except Exception as e:
+            raise HTTPException(502, f"the summary failed: {e}") from None
+
+    @app.post("/api/rooms/{room_id}/research")
+    async def research(room_id: str, body: ResearchBody, x_parley_token: Token = None):
+        load(room_id).participant(x_parley_token)
+        try:
+            return {"text": await RS.research(body.topic, body.context, client)}
+        except RS.ResearchError as e:
+            raise HTTPException(400, str(e)) from None
+        except Exception as e:
+            raise HTTPException(502, f"the research failed: {e}") from None
 
     @app.post("/api/rooms/{room_id}/game/agree")
     async def agree(room_id: str, body: VersionBody, x_parley_token: Token = None):

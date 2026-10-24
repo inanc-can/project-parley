@@ -9,6 +9,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.143.0",
     "litellm>=1.105.0",
+    "markitdown[docx,outlook,pdf,pptx,xls,xlsx]>=0.1.8",
     "pydantic>=2.14.0",
     "python-dotenv>=1.2.4",
     "questionary>=2.1.1",

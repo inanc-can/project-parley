@@ -1,7 +1,8 @@
 # Parley — notes for Claude
 
 Research platform where LLM agents negotiate and play games; the goal is publishable
-findings on how models, prompts and techniques change behaviour. Setup, usage and the code
+findings on how models, prompts and techniques change behaviour. Literature notes, possible
+hosts and the proposal live in the sibling repo `../research`. Setup, usage and the code
 layout are in `README.md`; the original design plan is
 `~/.claude/plans/i-want-to-build-hashed-toucan.md`.
 
@@ -79,6 +80,15 @@ away; it ends on a deal, a walk-away, `silence` (everyone passes in a row), or a
 (`limit`, with `show_limit` false). `strict_alternation()` is the old setup and every template
 uses it; specs saved as `alternating` load as strict. Later stages: seat memory/history and cost,
 richer scenes, briefings, reruns, a harness builder (decisions in Claude's project memory).
+
+Game page (2026-10-19): the user is rebuilding it piece by piece; only the Scenario card (plus the
+Save/Agree bar) is shown, other spec fields stay in the data and keep their defaults. Shared files
+(`files.py`, `GameSpec.files`): uploads are converted to text once (markitdown; images described by
+`PARLEY_VISION_MODEL`, default Qwen2.5-VL-72B) and agents and the judge read them after the shared
+context (`GameSpec.full_context()`); "Summarise from files" writes a draft into the shared context.
+Limits: 10 MB per file, 200k characters of text; scanned PDFs without text are refused for now.
+"Research" (`research.py`) asks a model with OpenRouter web search (`:online` slug,
+`PARLEY_RESEARCH_MODEL`, ~1 cent and 20–60 s a search) to write cited findings into the shared context.
 
 Open / ideas, roughly in order:
 1. Flag degenerate provider output separately from genuine forfeits.

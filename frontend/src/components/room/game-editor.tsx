@@ -5,13 +5,14 @@ import { useEffect, useState } from "react";
 import { SimpleSelect } from "@/components/simple-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api";
 import { attempt, notifyInfo } from "@/lib/notify";
-import type { DealField, GameSpec, Protocol, RoomView, Scoring } from "@/lib/types";
+import type { GameSpec, RoomView } from "@/lib/types";
+
+import { SharedFiles } from "./shared-files";
 
 // "key = value" lines <-> a number map, for private values and item counts.
 const toLines = (m: Record<string, number>) =>
@@ -128,6 +129,14 @@ export function GameEditor({ room, onChange }: { room: RoomView; onChange: () =>
               onChange={(e) => edit({ shared_context: e.target.value })}
               placeholder="A 2015 Civic is for sale. The seller and buyer negotiate the price…"
             />
+            <SharedFiles
+              roomId={room.id}
+              files={draft.files ?? []}
+              context={draft.shared_context}
+              disabled={locked}
+              onFiles={(files) => edit({ files })}
+              onContext={(shared_context) => edit({ shared_context })}
+            />
           </CardContent>
         </Card>
 
@@ -174,36 +183,6 @@ export function GameEditor({ room, onChange }: { room: RoomView; onChange: () =>
             ))}
           </CardContent>
         </Card>
-
-        <ScoringCard draft={draft} edit={edit} resetKey={resetKey} />
-        <ProtocolCard draft={draft} edit={edit} />
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Judge</CardTitle>
-            <CardDescription>
-              The judge reads every transcript, rates behaviour, and extracts deals agreed only in words. Leave empty
-              for the default rubric (honesty, cooperativeness, assertiveness, consistency).
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Textarea
-              rows={3}
-              value={draft.judge_rubric ?? ""}
-              onChange={(e) => edit({ judge_rubric: e.target.value || null })}
-            />
-            <div className="flex items-center gap-2">
-              <Label>Runs per match</Label>
-              <Input
-                className="w-24"
-                type="number"
-                min={1}
-                value={draft.runs}
-                onChange={(e) => edit({ runs: Number(e.target.value) })}
-              />
-            </div>
-          </CardContent>
-        </Card>
       </fieldset>
     </div>
   );
@@ -223,285 +202,5 @@ function ValuesBox({ value, onChange }: { value: Record<string, number>; onChang
       }}
       placeholder="reservation = 8000"
     />
-  );
-}
-
-function ScoringCard({
-  draft,
-  edit,
-  resetKey,
-}: {
-  draft: GameSpec;
-  edit: (p: Partial<GameSpec>) => void;
-  resetKey: string;
-}) {
-  const roles = draft.roles.map((r) => r.name);
-  const s = draft.scoring;
-
-  function setKind(kind: string) {
-    let scoring: Scoring;
-    if (kind === "surplus") {
-      const field = draft.deal_fields[0]?.name ?? "price";
-      scoring = { kind, field, direction: Object.fromEntries(roles.map((r, i) => [r, i === 0 ? "up" : "down"])) };
-      if (!draft.deal_fields.length) {
-        edit({ scoring, deal_fields: [{ name: field, type: "number", min: 0, max: null, description: "" }] });
-        return;
-      }
-    } else if (kind === "valuations") {
-      scoring = { kind, items: { item: 1 }, allocation_role: roles[0] };
-    } else if (kind === "matrix") {
-      return; // only via the prisoner's dilemma template
-    } else {
-      scoring = { kind: "judge_only" };
-    }
-    edit({ scoring });
-  }
-
-  function setFields(deal_fields: DealField[]) {
-    edit({ deal_fields });
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Deal & scoring</CardTitle>
-        <CardDescription>
-          Structured scoring gives exact payoffs and theory baselines. &ldquo;Judge only&rdquo; works for any free-form
-          scenario.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <SimpleSelect
-          value={s.kind}
-          onChange={setKind}
-          options={[
-            { value: "judge_only", label: "Judge only (free-form)" },
-            { value: "surplus", label: "Surplus: one number, e.g. a price" },
-            { value: "valuations", label: "Valuations: split items valued privately" },
-            ...(s.kind === "matrix" ? [{ value: "matrix", label: "Payoff matrix (from template)" }] : []),
-          ]}
-        />
-
-        {s.kind !== "judge_only" && s.kind !== "matrix" && (
-          <div className="flex flex-col gap-2">
-            <Label>Deal fields (what an offer must specify)</Label>
-            {draft.deal_fields.map((f, i) => (
-              <div key={i} className="grid grid-cols-12 gap-2">
-                <Input
-                  className="col-span-3"
-                  value={f.name}
-                  placeholder="name"
-                  onChange={(e) => setFields(draft.deal_fields.map((x, j) => (j === i ? { ...x, name: e.target.value } : x)))}
-                />
-                <div className="col-span-2">
-                  <SimpleSelect
-                    value={f.type}
-                    onChange={(type) =>
-                      setFields(draft.deal_fields.map((x, j) => (j === i ? { ...x, type: type as DealField["type"] } : x)))
-                    }
-                    options={[{ value: "number" }, { value: "integer" }]}
-                  />
-                </div>
-                {(["min", "max"] as const).map((k) => (
-                  <Input
-                    key={k}
-                    className="col-span-2"
-                    type="number"
-                    placeholder={k}
-                    value={f[k] ?? ""}
-                    onChange={(e) =>
-                      setFields(
-                        draft.deal_fields.map((x, j) =>
-                          j === i ? { ...x, [k]: e.target.value === "" ? null : Number(e.target.value) } : x,
-                        ),
-                      )
-                    }
-                  />
-                ))}
-                <Input
-                  className="col-span-2"
-                  value={f.description}
-                  placeholder="meaning"
-                  onChange={(e) =>
-                    setFields(draft.deal_fields.map((x, j) => (j === i ? { ...x, description: e.target.value } : x)))
-                  }
-                />
-                <Button
-                  variant="ghost"
-                  className="col-span-1"
-                  onClick={() => setFields(draft.deal_fields.filter((_, j) => j !== i))}
-                >
-                  ✕
-                </Button>
-              </div>
-            ))}
-            <Button
-              variant="outline"
-              size="sm"
-              className="self-start"
-              onClick={() => setFields([...draft.deal_fields, { name: "", type: "number", min: null, max: null, description: "" }])}
-            >
-              Add field
-            </Button>
-          </div>
-        )}
-
-        {s.kind === "surplus" && (
-          <div className="grid gap-3 @3xl:grid-cols-3">
-            <div className="flex flex-col gap-2">
-              <Label>Field that sets the payoff</Label>
-              <SimpleSelect
-                value={s.field}
-                onChange={(field) => edit({ scoring: { ...s, field } })}
-                options={draft.deal_fields.map((f) => ({ value: f.name }))}
-              />
-            </div>
-            {roles.map((r) => (
-              <div key={r} className="flex flex-col gap-2">
-                <Label>{r} gains when it goes</Label>
-                <SimpleSelect
-                  value={s.direction[r] ?? "up"}
-                  onChange={(d) => edit({ scoring: { ...s, direction: { ...s.direction, [r]: d as "up" | "down" } } })}
-                  options={[
-                    { value: "up", label: "up (payoff = value − reservation)" },
-                    { value: "down", label: "down (payoff = reservation − value)" },
-                  ]}
-                />
-              </div>
-            ))}
-            <p className="text-muted-foreground text-sm @3xl:col-span-3">
-              Give each role a <code>reservation</code> private value; an optional <code>no_deal</code> value is what
-              they get without a deal.
-            </p>
-          </div>
-        )}
-
-        {s.kind === "valuations" && (
-          <div className="grid gap-3 @3xl:grid-cols-2">
-            <div className="flex flex-col gap-2">
-              <Label>Items to split (name = count)</Label>
-              <ValuesBox
-                key={resetKey}
-                value={s.items}
-                onChange={(items) =>
-                  edit({
-                    scoring: { ...s, items },
-                    deal_fields: Object.entries(items).map(([name, n]) => ({
-                      name,
-                      type: "integer",
-                      min: 0,
-                      max: n,
-                      description: `${name} ${s.allocation_role} receives`,
-                    })),
-                  })
-                }
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Offers say how many items this role receives</Label>
-              <SimpleSelect
-                value={s.allocation_role}
-                onChange={(allocation_role) => edit({ scoring: { ...s, allocation_role } })}
-                options={roles.map((r) => ({ value: r }))}
-              />
-              <p className="text-muted-foreground text-sm">
-                Each role values items through its private values (item = points each).
-              </p>
-            </div>
-          </div>
-        )}
-
-        {s.kind === "matrix" && (
-          <pre className="bg-muted rounded p-3 text-xs">{JSON.stringify(s.payoffs, null, 1)}</pre>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ProtocolCard({ draft, edit }: { draft: GameSpec; edit: (p: Partial<GameSpec>) => void }) {
-  const p = draft.protocol;
-  const setP = (patch: Partial<Protocol>) => edit({ protocol: { ...p, ...patch } as Protocol });
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Turn rules</CardTitle>
-        <CardDescription>
-          {p.kind === "simultaneous_rounds"
-            ? "Each round: a short talk phase, then everyone moves at once."
-            : p.turn_taking === "natural"
-              ? "A conversation, as between people: agents may stay silent, follow up, or walk away, and any message may carry an offer, accept or reject. It ends on a deal, a walk-away, or when everyone stays silent."
-              : "Strict turns: players alternate, one message each. Any message may carry an offer, accept, reject or walk away."}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-wrap items-center gap-4">
-        {p.kind === "conversation" ? (
-          <>
-            <Label>Turn-taking</Label>
-            <SimpleSelect
-              className="w-40"
-              value={p.turn_taking}
-              onChange={(v) => setP({ turn_taking: v as "natural" | "strict" })}
-              options={[
-                { value: "natural", label: "Natural" },
-                { value: "strict", label: "Strict turns" },
-              ]}
-            />
-            <Label>{p.show_limit ? "Max messages" : "Safety cap"}</Label>
-            <Input
-              className="w-24"
-              type="number"
-              min={1}
-              value={p.max_messages}
-              onChange={(e) => setP({ max_messages: Number(e.target.value) })}
-            />
-            <Label className="flex items-center gap-2">
-              <Checkbox checked={p.show_limit} onCheckedChange={(c) => setP({ show_limit: c })} />
-              Agents see the limit
-            </Label>
-            {p.turn_taking === "natural" && (
-              <>
-                <Label>Follow-ups in a row</Label>
-                <Input
-                  className="w-20"
-                  type="number"
-                  min={0}
-                  value={p.max_follow_ups}
-                  onChange={(e) => setP({ max_follow_ups: Number(e.target.value) })}
-                />
-              </>
-            )}
-            <Label>First speaker</Label>
-            <SimpleSelect
-              className="w-40"
-              value={String(p.first)}
-              onChange={(v) => setP({ first: Number(v) })}
-              options={draft.roles.map((r, i) => ({ value: String(i), label: r.name }))}
-            />
-            <Label className="flex items-center gap-2">
-              <Checkbox checked={p.reject_ends} onCheckedChange={(c) => setP({ reject_ends: c })} />A rejection ends
-              the game
-            </Label>
-          </>
-        ) : (
-          <>
-            <Label>Rounds</Label>
-            <Input className="w-24" type="number" min={1} value={p.rounds} onChange={(e) => setP({ rounds: Number(e.target.value) })} />
-            <Label>Talk messages per round</Label>
-            <Input
-              className="w-24"
-              type="number"
-              min={0}
-              value={p.talk_messages}
-              onChange={(e) => setP({ talk_messages: Number(e.target.value) })}
-            />
-            <Label className="flex items-center gap-2">
-              <Checkbox checked={p.show_horizon} onCheckedChange={(c) => setP({ show_horizon: c })} />
-              Players know the number of rounds
-            </Label>
-          </>
-        )}
-      </CardContent>
-    </Card>
   );
 }

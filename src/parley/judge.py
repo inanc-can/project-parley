@@ -63,7 +63,7 @@ class Judge:
             fields=[f.name for f in spec.deal_fields] or "none",
             rubric=spec.judge_rubric or DEFAULT_RUBRIC,
             title=spec.title,
-            context=spec.shared_context,
+            context=spec.full_context(),
             briefs=briefs,
             transcript=transcript or "(empty)",
             formal=outcome.model_dump_json(include={"end_reason", "deal", "payoffs"}),

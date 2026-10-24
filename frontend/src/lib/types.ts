@@ -33,9 +33,13 @@ export type Protocol =
       show_horizon: boolean;
     };
 
+// A file in the shared context, kept as the text agents read (images hold a description).
+export type SharedFile = { name: string; mime: string; sha256: string; text: string };
+
 export type GameSpec = {
   title: string;
   shared_context: string;
+  files?: SharedFile[];
   roles: Role[];
   deal_fields: DealField[];
   scoring: Scoring;

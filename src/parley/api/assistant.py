@@ -122,7 +122,9 @@ def _state(room: R.Room, token: str | None) -> dict[str, Any]:
         "players": view["participants"],
         "open_seats": view["capacity"] - len(view["participants"]),
         "game": {"version": view["game"]["version"], "locked": view["game"]["locked"]},
-        "spec": room.spec.model_dump(mode="json"),
+        # file texts can be long; the assistant only needs to know which files there are
+        "spec": room.spec.model_dump(mode="json", exclude={"files"})
+        | {"files": [f"{f.name} ({len(f.text):,} characters)" for f in room.spec.files]},
         "allowed_models": room.settings.allowed_models,
         "can_start": view["can_start"],
         "start_problems": view["start_problems"],

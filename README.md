@@ -65,7 +65,7 @@ Then open `analysis/explore.ipynb` (payoffs by model and role with bootstrap CIs
 | `src/parley/matches/` | seats and the match runner (role swap, seeds, parallel episodes) |
 | `src/parley/api/` | FastAPI: rooms, shared game, private seats, live stream (SSE) |
 | `frontend/` | Next.js + shadcn/ui web app |
-| `research/` | related projects (git submodules) + papers + notes; never imported |
+| `../research/` | separate repo: literature notes, papers, related code; never imported |
 
 ## Tests
 
