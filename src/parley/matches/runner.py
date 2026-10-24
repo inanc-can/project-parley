@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from parley.agents.live import LiveTurns
 from parley.core.baselines import reference_solutions
 from parley.core.engine import run_episode
 from parley.core.spec import GameSpec
@@ -78,9 +79,11 @@ async def run_match(
     match_id: str | None = None,
     on_event: OnEvent = None,
     on_record: OnRecord = None,
+    live: LiveTurns | None = None,
 ) -> list[EpisodeRecord]:
     """Play every episode. A failing episode is retried, then recorded as failed; the others
-    carry on. on_record gets each record as soon as its episode finishes."""
+    carry on. on_record gets each record as soon as its episode finishes. `live` holds the
+    mailboxes of live seats (agents outside Parley answering through the API)."""
     match_id = match_id or uuid.uuid4().hex[:12]
     spec = cfg.spec
     runs = cfg.runs or spec.runs
@@ -98,6 +101,9 @@ async def run_match(
             seed = cfg.seed * 100_000 + index
             assignment = assignment_for(spec, seat_ids, index, cfg.swap_roles)
 
+            async def on_pending(role: str):  # a live seat is waiting for its outside agent
+                await emit({"type": "turn_pending", "index": index, "role": role})
+
             async def on_turn(turn: Turn):
                 public = turn.model_dump(include={"role", "message", "action", "round", "phase"})
                 await emit({"type": "turn", "index": index, "turn": public})
@@ -105,7 +111,13 @@ async def run_match(
             error = None
             for attempt in range(1, cfg.episode_attempts + 1):
                 agents = {
-                    role: build_agent(cfg.seats[sid], client, seed)
+                    role: build_agent(
+                        cfg.seats[sid],
+                        client,
+                        seed,
+                        live.box(match_id, sid) if live else None,
+                        on_pending,
+                    )
                     for role, sid in assignment.items()
                 }
                 start = {"type": "episode_start", "index": index, "assignment": assignment}
@@ -147,6 +159,8 @@ async def run_match(
             )
             if on_record:
                 on_record(record)
+            if live:
+                await live.end(match_id, outcome.model_dump())
             end = {"type": "episode_end", "index": index, "outcome": outcome.model_dump()}
             await emit({**end, "error": error})
             return record

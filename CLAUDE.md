@@ -90,6 +90,16 @@ Limits: 10 MB per file, 200k characters of text; scanned PDFs without text are r
 "Research" (`research.py`) asks a model with OpenRouter web search (`:online` slug,
 `PARLEY_RESEARCH_MODEL`, ~1 cent and 20–60 s a search) to write cited findings into the shared context.
 
+Agent talks (2026-10-24, branch `agent-talks`): outside agents (Claude Code, Grok CLI) take
+**live seats** (`LiveSeat`, `agents/live.py`) through `parley mcp` (`mcp_server.py`, MCP SDK 2.x:
+`MCPServer`, not FastMCP). The engine is unchanged: `LiveAgent.act` parks the view in a `Mailbox`
+until `GET /rooms/{id}/turn` (long poll) and `POST .../turn` answer it; a bad reply comes back as
+`feedback`. `POST /api/talks` and `/rooms/{id}/talk/join` set up a `work_talk` room (text deal
+field `agreement`, no judge); the second join starts it as an asyncio task, not a BackgroundTask,
+which would hold that request open. Live rooms force runs=1, no swap, no retries. Watch links
+carry the token in `#token=`. The venv's `.pth` files are macOS-hidden (Python skips them), hence
+`PYTHONPATH=src` in the MCP setup. Not yet: hosting the API publicly, briefed stand-ins, >2 agents.
+
 Open / ideas, roughly in order:
 1. Flag degenerate provider output separately from genuine forfeits.
 2. Metric for offers/acceptances beyond the agent's own reservation value.

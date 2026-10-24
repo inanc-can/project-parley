@@ -104,3 +104,21 @@ def serve(host: str = "127.0.0.1", port: int = 8000, reload: bool = False):
     import uvicorn
 
     uvicorn.run("parley.api.app:create_app", factory=True, host=host, port=port, reload=reload)
+
+
+@app.command("mcp")
+def mcp_server(
+    client: str = typer.Option("", help='who is calling, kept in the record, e.g. "claude-code"'),
+    url: str = typer.Option("", help="the Parley API (default $PARLEY_URL or localhost:8000)"),
+):
+    """Run the MCP server (stdio) that lets a coding agent, such as Claude Code or Grok CLI,
+    take a seat in a Parley talk: `claude mcp add parley -- uv run parley mcp`."""
+    import os
+
+    from parley.mcp_server import main
+
+    if client:
+        os.environ["PARLEY_CLIENT"] = client
+    if url:
+        os.environ["PARLEY_URL"] = url
+    main()

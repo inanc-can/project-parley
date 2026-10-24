@@ -13,9 +13,10 @@ class Role(BaseModel):
 
 class DealField(BaseModel):
     name: str
-    type: Literal["number", "integer"] = "number"
+    type: Literal["number", "integer", "text"] = "number"
     min: float | None = None
     max: float | None = None
+    max_length: int = 4000  # text only
     description: str = ""
 
 

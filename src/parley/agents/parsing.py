@@ -31,6 +31,10 @@ def render_rules(view: RoleView) -> str:
     if view.deal_fields:
         lines += ["", "## Deal terms"]
         for f in view.deal_fields:
+            if f.type == "text":
+                desc = f": {f.description}" if f.description else ""
+                lines.append(f"- {f.name} (text, at most {f.max_length} characters){desc}")
+                continue
             bounds = "".join(
                 [
                     f", min {f.min:g}" if f.min is not None else "",

@@ -12,7 +12,8 @@ from pydantic import BaseModel, Field
 
 from parley.core.spec import Conversation, GameSpec, JudgeOnlyScoring, Role
 from parley.matches.runner import EpisodeRecord, MatchConfig
-from parley.matches.seats import LLMSeat, Seat, TeamSeat
+from parley.matches.seats import LiveSeat, LLMSeat, Seat, TeamSeat
+from parley.templates import work_talk
 
 # OpenRouter models across families (needs OPENROUTER_API_KEY). Until 2026-10-17 the defaults
 # were on Featherless; OpenRouter has no Hermes-3-8B or Qwen2.5-14B, so Llama-3.1-8B (Hermes 3's
@@ -156,6 +157,43 @@ def release_seat(room: Room, token: str, seat_of: str) -> None:
         p.ready = False
 
 
+# --- Talks: outside agents (Claude Code, Grok CLI, ...) meet in a work talk ------------------
+
+
+def open_talk(goal: str, name: str, client: str = "") -> tuple[Room, str]:
+    """A room for two outside agents: the work-talk game with `goal` as its shared context, and
+    the opener's live seat taken and agreed. No judge by default, so nothing said in the talk
+    goes to a model the people didn't pick."""
+    if not goal.strip():
+        raise RoomError(422, "say what the talk is about")
+    room, token = create_room(name)
+    room.spec = work_talk(goal.strip())
+    room.settings.judge_model = None
+    _take_live_seat(room, token, client)
+    return room, token
+
+
+def join_talk(room: Room, name: str, client: str = "") -> str:
+    """Join with a live seat, agreeing to the game as it stands. Once the room is full and
+    locked, every live seat is ready."""
+    token = join(room, name)
+    _take_live_seat(room, token, client)
+    return token
+
+
+def _take_live_seat(room: Room, token: str, client: str) -> None:
+    room.participant(token).seat = LiveSeat(client=client.strip()[:40])
+    agree(room, token, room.version)
+    if room.locked:
+        for p in room.participants:
+            if isinstance(p.seat, LiveSeat):
+                p.ready = True
+
+
+def has_live_seat(room: Room) -> bool:
+    return any(isinstance(p.seat, LiveSeat) for p in room.participants)
+
+
 def update_game(room: Room, token: str, spec: GameSpec) -> None:
     me = room.participant(token)
     if room.locked:
@@ -220,21 +258,35 @@ def start_problems(room: Room) -> list[str]:
     if len(room.participants) < room.capacity():
         problems.append(f"waiting for {room.capacity() - len(room.participants)} more person(s)")
     problems += [f"{p.name} is not ready" for p in room.participants if not p.ready]
-    if isinstance(room.spec.scoring, JudgeOnlyScoring) and not room.settings.judge_model:
+    all_live = bool(room.participants) and all(
+        isinstance(p.seat, LiveSeat) for p in room.participants
+    )
+    # A talk between outside agents is recorded unscored when there is no judge.
+    if (
+        isinstance(room.spec.scoring, JudgeOnlyScoring)
+        and not room.settings.judge_model
+        and not all_live
+    ):
         problems.append("this game is scored by the judge only, but no judge model is set")
+    if has_live_seat(room) and not isinstance(room.spec.protocol, Conversation):
+        problems.append("live agents can only play conversation games")
     return problems
 
 
 def match_config(room: Room, runs: int | None) -> MatchConfig:
     if problems := start_problems(room):
         raise RoomError(409, "; ".join(problems))
-    return MatchConfig(
+    cfg = MatchConfig(
         spec=room.spec,
         seats={p.name: p.seat for p in room.participants},
         runs=runs,
         judge_model=room.settings.judge_model,  # rubric scores for every game
         parallel=room.settings.parallel,
     )
+    if has_live_seat(room):
+        # A live agent talks once, in its own role: a rerun or retry would replay the talk.
+        cfg.runs, cfg.swap_roles, cfg.parallel, cfg.episode_attempts = 1, False, 1, 1
+    return cfg
 
 
 # --- What each person may see -------------------------------------------------
