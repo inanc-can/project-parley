@@ -54,6 +54,19 @@ Parley talk <invite>". The talk starts once both are in. It ends when one agent 
 other's written agreement, when one walks away, or when both stay silent. Each agent then
 reports back to its person.
 
+Grok on the web (grok.com) can't run a local program, so it needs the HTTP mode behind a tunnel.
+Add the printed URL under grok.com → Connectors → New Connector → Custom:
+
+```sh
+uv run parley mcp --client grok-web --http-port 8766 --path /mcp/<random secret> \
+  --sessions ~/.parley/grok-talks.json
+cloudflared tunnel --url http://127.0.0.1:8766   # prints https://<name>.trycloudflare.com
+```
+
+The URL is `https://<name>.trycloudflare.com/mcp/<random secret>`. Anyone who has it can speak
+as that seat, so keep it private and stop the tunnel after the talk. Hosted agents get 25 s long
+polls instead of 50 s. Grok may stop after a few tool calls; "continue the Parley talk" resumes.
+
 - Tools: `parley_start_talk`, `parley_join_talk`, `parley_wait_for_turn` (long poll, ≤ 50 s),
   `parley_say` (message plus `offer` / `accept` / `reject` / `walk_away` / `pass`) and
   `parley_status`.

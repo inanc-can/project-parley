@@ -1,9 +1,10 @@
 """`parley mcp`: an MCP server that lets a coding agent (Claude Code, Grok CLI, ...) take a seat
 in a Parley talk and speak for its person.
 
-It runs over stdio next to the agent and calls the Parley API over HTTP (PARLEY_URL, default
-http://127.0.0.1:8000). Room tokens are kept in ~/.parley/agent-talks.json so a restarted agent
-can carry on where it left off."""
+It runs over stdio next to the agent, or over streamable HTTP for hosted agents such as grok.com
+(a custom connector, reached through a tunnel). Either way it calls the Parley API over HTTP
+(PARLEY_URL, default http://127.0.0.1:8000). Room tokens are kept in ~/.parley/agent-talks.json
+so a restarted agent can carry on where it left off. One server holds one person's tokens."""
 
 import json
 import os
@@ -45,6 +46,7 @@ class Talks:
         web_url: str | None = None,
         sessions: Path | None = None,
         http: httpx.Client | None = None,
+        wait_seconds: float = 50,
     ):
         self.base = (base_url or os.environ.get("PARLEY_URL", "http://127.0.0.1:8000")).rstrip("/")
         self.web = (web_url or os.environ.get("PARLEY_WEB_URL", "http://localhost:3000")).rstrip(
@@ -52,6 +54,7 @@ class Talks:
         )
         self.sessions = sessions or Path.home() / ".parley" / "agent-talks.json"
         self.http = http or httpx.Client(base_url=self.base, timeout=130)
+        self.wait_seconds = wait_seconds  # long poll per call; hosted agents time out sooner
 
     # --- saved tokens ---
     def _load(self) -> dict[str, dict[str, str]]:
@@ -115,7 +118,8 @@ class Talks:
             "next": "Give your person the watch link, then call parley_wait_for_turn.",
         }
 
-    def wait(self, room: str, seconds: float = 50) -> dict[str, Any]:
+    def wait(self, room: str, seconds: float | None = None) -> dict[str, Any]:
+        seconds = self.wait_seconds if seconds is None else seconds
         return self._call(
             "GET", f"/rooms/{room}/turn", token=self._token(room), params={"wait": seconds}
         )
@@ -183,7 +187,7 @@ def build_server(talks: Talks | None = None):
 
     @server.tool()
     def parley_wait_for_turn(room: str) -> dict[str, Any]:
-        """Wait (up to about 50 s) for your turn. status "your_turn" comes with `prompt`: the
+        """Wait (up to about a minute) for your turn. status "your_turn" comes with `prompt`: the
         rules, the conversation so far and what you may do; answer it with parley_say.
         "waiting" / "not_started": call this again. "ended": the talk is over, see `outcome`."""
         return talks.wait(room)
@@ -213,8 +217,23 @@ def build_server(talks: Talks | None = None):
     return server
 
 
-def main() -> None:
+def main(http_port: int | None = None, path: str = "/mcp", sessions: Path | None = None) -> None:
+    """stdio by default; with `http_port`, streamable HTTP on localhost at `path`."""
     import logging
 
     logging.getLogger("httpx").setLevel(logging.WARNING)  # a line per long poll otherwise
-    build_server().run("stdio")
+    if http_port is None:
+        build_server(Talks(sessions=sessions)).run("stdio")
+        return
+    from mcp.server.transport_security import TransportSecuritySettings
+
+    server = build_server(Talks(sessions=sessions, wait_seconds=25))
+    # A tunnel forwards other host names; the hard-to-guess `path` is what keeps strangers out.
+    security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
+    server.run(
+        "streamable-http",
+        host="127.0.0.1",
+        port=http_port,
+        streamable_http_path=path,
+        transport_security=security,
+    )
