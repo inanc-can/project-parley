@@ -36,20 +36,28 @@ class Mailbox:
                 setattr(self, k, v)
             self._cond.notify_all()
 
+    @property
+    def open_turn(self) -> Pending | None:
+        """The turn still waiting for an answer: an answered one stays `pending` until the
+        engine picks the answer up, and must not be handed out again."""
+        p = self.pending
+        return p if p is not None and not p.reply.done() else None
+
     async def wait(self, timeout: float) -> None:
-        """Return when a turn is pending or the talk is over, or after `timeout` seconds."""
+        """Return when a turn is open or the talk is over, or after `timeout` seconds."""
         async with self._cond:
             try:
                 await asyncio.wait_for(
-                    self._cond.wait_for(lambda: self.pending or self.outcome), timeout
+                    self._cond.wait_for(lambda: self.open_turn or self.outcome), timeout
                 )
             except TimeoutError:
                 pass
 
     def answer(self, turn: Turn) -> bool:
-        """Hand the outside agent's turn to the engine; False if no turn is pending."""
-        p = self.pending
-        if p is None or p.reply.done():
+        """Hand the outside agent's turn to the engine; False if no turn is open. Call it on
+        the event loop's thread: the reply is an asyncio future."""
+        p = self.open_turn
+        if p is None:
             return False
         p.reply.set_result(turn)
         return True
@@ -68,9 +76,14 @@ class LiveTurns:
         return self._boxes.get((match_id, seat_id))
 
     async def end(self, match_id: str, outcome: dict[str, Any]) -> None:
-        for (mid, _), b in self._boxes.items():
+        for (mid, _), b in list(self._boxes.items()):
             if mid == match_id:
                 await b._set(pending=None, outcome=outcome)
+
+    def drop(self, match_id: str) -> None:
+        """Forget a finished match's mailboxes; its outcome is in the store from then on."""
+        for key in [k for k in self._boxes if k[0] == match_id]:
+            del self._boxes[key]
 
 
 class LiveAgent:

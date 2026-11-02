@@ -174,8 +174,7 @@ def open_talk(goal: str, name: str, client: str = "") -> tuple[Room, str]:
 
 
 def join_talk(room: Room, name: str, client: str = "") -> str:
-    """Join with a live seat, agreeing to the game as it stands. Once the room is full and
-    locked, every live seat is ready."""
+    """Join with a live seat, agreeing to the game as it stands."""
     token = join(room, name)
     _take_live_seat(room, token, client)
     return token
@@ -184,14 +183,16 @@ def join_talk(room: Room, name: str, client: str = "") -> str:
 def _take_live_seat(room: Room, token: str, client: str) -> None:
     room.participant(token).seat = LiveSeat(client=client.strip()[:40])
     agree(room, token, room.version)
-    if room.locked:
-        for p in room.participants:
-            if isinstance(p.seat, LiveSeat):
-                p.ready = True
 
 
 def has_live_seat(room: Room) -> bool:
     return any(isinstance(p.seat, LiveSeat) for p in room.participants)
+
+
+def is_ready(room: Room, p: Participant) -> bool:
+    """A live seat has nothing to set up: it is ready whenever the game is locked, also after
+    an unlock and a new agreement."""
+    return p.ready or (room.locked and isinstance(p.seat, LiveSeat))
 
 
 def update_game(room: Room, token: str, spec: GameSpec) -> None:
@@ -257,7 +258,7 @@ def start_problems(room: Room) -> list[str]:
         problems.append("the game is not locked")
     if len(room.participants) < room.capacity():
         problems.append(f"waiting for {room.capacity() - len(room.participants)} more person(s)")
-    problems += [f"{p.name} is not ready" for p in room.participants if not p.ready]
+    problems += [f"{p.name} is not ready" for p in room.participants if not is_ready(room, p)]
     all_live = bool(room.participants) and all(
         isinstance(p.seat, LiveSeat) for p in room.participants
     )
@@ -300,18 +301,18 @@ def room_view(room: Room, token: str) -> dict[str, Any]:
             "name": me.name,
             "is_host": room.is_host(token),
             "seat": me.seat,
-            "ready": me.ready,
+            "ready": is_ready(room, me),
             "reveal": me.reveal,
         },
         # Seats this person took with "Assign me": they see and edit these like their own.
         "controlled": [
-            {"name": p.name, "seat": p.seat, "ready": p.ready, "reveal": p.reveal}
+            {"name": p.name, "seat": p.seat, "ready": is_ready(room, p), "reveal": p.reveal}
             for p in room.owned_by(token)
         ],
         "participants": [
             {
                 "name": p.name,
-                "ready": p.ready,
+                "ready": is_ready(room, p),
                 "has_seat": p.seat is not None,
                 "agreed": p.token in room.agreed,
                 "is_host": room.is_host(p.token),

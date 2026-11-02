@@ -8,6 +8,7 @@ so a restarted agent can carry on where it left off. One server holds one person
 
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +56,7 @@ class Talks:
         self.sessions = sessions or Path.home() / ".parley" / "agent-talks.json"
         self.http = http or httpx.Client(base_url=self.base, timeout=130)
         self.wait_seconds = wait_seconds  # long poll per call; hosted agents time out sooner
+        self._lock = threading.Lock()  # the MCP SDK runs these tools in worker threads
 
     # --- saved tokens ---
     def _load(self) -> dict[str, dict[str, str]]:
@@ -64,11 +66,18 @@ class Talks:
             return {}
 
     def _remember(self, room: str, token: str, name: str) -> None:
-        data = self._load()
-        data[room] = {"token": token, "name": name}
-        self.sessions.parent.mkdir(parents=True, exist_ok=True)
-        self.sessions.write_text(json.dumps(data, indent=2))
-        self.sessions.chmod(0o600)
+        with self._lock:
+            data = self._load()
+            data[room] = {"token": token, "name": name}
+            self.sessions.parent.mkdir(parents=True, exist_ok=True)
+            # Write a private temp file and swap it in: the tokens are never readable by others,
+            # and a reader never sees half a file.
+            tmp = self.sessions.with_name(self.sessions.name + ".tmp")
+            tmp.unlink(missing_ok=True)
+            fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(fd, "w") as f:
+                json.dump(data, f, indent=2)
+            os.replace(tmp, self.sessions)
 
     def _token(self, room: str) -> str:
         if room not in (data := self._load()):

@@ -15,8 +15,19 @@ ACTION_HELP = {
     PASS: 'stay silent this turn (leave "message" empty): {"type": "pass"}',
 }
 
+# For live agents, which answer with a tool call (message + action name) rather than JSON.
+TOOL_ACTION_HELP = {
+    "offer": "offer: propose terms, giving every deal field",
+    "accept": "accept: accept the other side's standing offer",
+    "reject": "reject: reject the other side's standing offer",
+    "walk_away": "walk_away: end the conversation with no deal",
+    PASS: "pass: stay silent this turn (leave the message empty)",
+}
 
-def render_rules(view: RoleView) -> str:
+
+def render_rules(view: RoleView, json_reply: bool = True) -> str:
+    """`json_reply`: tell a model to answer with one JSON object; live agents answer with a
+    tool call instead, so they get no reply format."""
     lines = [
         f"# Game: {view.title}",
         view.shared_context,
@@ -67,6 +78,8 @@ def render_rules(view: RoleView) -> str:
             "a standing offer. The conversation ends when an offer is accepted, someone walks "
             f"away, or everyone stays silent in a row.{limit}"
         )
+    if not json_reply:
+        return "\n".join(lines)
     natural = getattr(p, "turn_taking", None) == "natural"
     lines += [
         "",
@@ -84,7 +97,7 @@ def render_rules(view: RoleView) -> str:
     return "\n".join(lines)
 
 
-def render_state(view: RoleView) -> str:
+def render_state(view: RoleView, json_reply: bool = True) -> str:
     lines = ["## Conversation so far"]
     if not view.transcript:
         lines.append("(nothing yet — you speak first)")
@@ -112,15 +125,28 @@ def render_state(view: RoleView) -> str:
             f"Messages left in the whole negotiation (including this one): {view.messages_left}"
         )
     if not view.allowed_actions:
-        lines.append('Talk phase: "action" must be null.')
+        lines.append(
+            'Talk phase: "action" must be null.' if json_reply else "Talk phase: no action."
+        )
     elif view.must_act:
-        opts = ", ".join(f'{{"type": "{m}"}}' for m in view.allowed_actions)
-        lines.append(f'You must choose a move now. "action" must be one of: {opts}')
-    else:
+        if json_reply:
+            opts = ", ".join(f'{{"type": "{m}"}}' for m in view.allowed_actions)
+            lines.append(f'You must choose a move now. "action" must be one of: {opts}')
+        else:
+            opts = ", ".join(view.allowed_actions)
+            lines.append(f"You must choose a move now, one of: {opts}")
+    elif json_reply:
         lines.append("Allowed actions (or null for just talking):")
         lines += [f"- {ACTION_HELP.get(a, a)}" for a in view.allowed_actions]
+    else:
+        lines.append("Allowed actions (or none for just talking):")
+        lines += [f"- {TOOL_ACTION_HELP.get(a, a)}" for a in view.allowed_actions]
     if view.can_follow_up:
-        lines.append('To add another message right after this one, set "follow_up": true.')
+        lines.append(
+            'To add another message right after this one, set "follow_up": true.'
+            if json_reply
+            else "You may keep the floor to add another message right after this one."
+        )
     elif PASS in view.allowed_actions:
         lines.append("You cannot keep the floor this time: the other side speaks next.")
     return "\n".join(lines)

@@ -28,7 +28,7 @@ from parley.core.types import Action, Turn
 from parley.llm.cache import Cache
 from parley.llm.client import LLMClient
 from parley.matches.runner import run_match
-from parley.matches.seats import Seat
+from parley.matches.seats import LiveSeat, Seat
 from parley.storage import Store
 from parley.templates import TEMPLATES
 
@@ -245,6 +245,9 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
         return await mutate(room_id, apply)
 
     # --- matches ---
+    def running(match_id: str) -> bool:
+        return match_id in live and not live[match_id].done
+
     async def launch(
         room_id: str, token: str | None, runs: int | None, tasks: BackgroundTasks | None
     ):
@@ -256,7 +259,13 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
         def prepare(r: R.Room):
             r.participant(token)
             cfg = R.match_config(r, runs)
+            if R.has_live_seat(r) and any(running(m) for m in r.match_ids):
+                raise R.RoomError(409, "this talk is already running")
             r.match_ids.append(match_id)
+            # Open the live seats' mailboxes now, so whoever sees the new match id finds them.
+            for sid, seat in cfg.seats.items():
+                if isinstance(seat, LiveSeat):
+                    turns.box(match_id, sid)
             return {"match_id": match_id, "cfg": cfg}
 
         prepared = await mutate(room_id, prepare)
@@ -269,8 +278,12 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
                 await run_match(cfg, client, match_id, events.push, store.save_episode, turns)
                 store.set_status(match_id, "done")
             except Exception as e:  # surface to viewers instead of dying silently
+                message = f"{type(e).__name__}: {e}"
                 store.set_status(match_id, "failed")
-                await events.push({"type": "error", "message": f"{type(e).__name__}: {e}"})
+                await turns.end(match_id, {"end_reason": "error", "error": message})
+                await events.push({"type": "error", "message": message})
+            finally:
+                turns.drop(match_id)
 
         if tasks is None:
             task = asyncio.create_task(run())
@@ -282,10 +295,10 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
 
     async def start_if_ready(room_id: str, token: str) -> str | None:
         """Start the talk once everyone is in and ready (the second agent to join starts it)."""
-        room = load(room_id)
-        if R.start_problems(room) or any(m in live and not live[m].done for m in room.match_ids):
+        try:
+            return (await launch(room_id, token, None, None))["match_id"]
+        except R.RoomError:  # not ready yet, or already running
             return None
-        return (await launch(room_id, token, None, None))["match_id"]
 
     # --- talks: outside agents (Claude Code, Grok CLI, ...) take live seats ---
     @app.post("/api/talks")
@@ -301,18 +314,21 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
         return {"token": token, "match_id": await start_if_ready(room_id, token)}
 
     def live_box(room: R.Room, seat: str):
-        """The mailbox of `seat` in the room's latest match that has one."""
-        for mid in reversed(room.match_ids):
-            if box := turns.get(mid, seat):
-                return box
-        return None
+        """The mailbox of `seat` in the room's latest match, while that match runs."""
+        return turns.get(room.match_ids[-1], seat) if room.match_ids else None
+
+    def last_outcome(match_id: str) -> dict[str, Any]:
+        """How a finished match ended, from the store (its mailboxes are gone by then)."""
+        episodes = store.episodes(match_id)
+        return episodes[-1].outcome.model_dump() if episodes else {"end_reason": "error"}
 
     @app.get("/api/rooms/{room_id}/turn")
     async def wait_turn(
         room_id: str, wait: float = 50, seat_of: str | None = None, x_parley_token: Token = None
     ):
         """Long poll for a live seat: returns as soon as it is this seat's turn or the talk is
-        over, else after `wait` seconds with status "waiting" (call again)."""
+        over, else after `wait` seconds with status "waiting" (call again). A talk that is ready
+        but not running yet (say, agreed again after an edit) is started here."""
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max(0.0, min(wait, 120))
         while True:
@@ -321,9 +337,10 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
             box = live_box(room, seat.name)
             if box:
                 await box.wait(max(0.0, deadline - loop.time()))
-                if box.pending:
-                    v, feedback = box.pending.view, box.pending.feedback
-                    prompt = render_rules(v) + "\n\n" + render_state(v)
+                if p := box.open_turn:
+                    v, feedback = p.view, p.feedback
+                    prompt = render_rules(v, json_reply=False) + "\n\n"
+                    prompt += render_state(v, json_reply=False)
                     if feedback:
                         prompt += f"\n\nYour previous turn was refused: {feedback}\nTry again."
                     return {
@@ -339,21 +356,27 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
                 if box.outcome:
                     return {"status": "ended", "outcome": box.outcome}
                 return {"status": "waiting", "detail": "the other side is speaking; call again"}
+            if room.match_ids and not running(room.match_ids[-1]):
+                return {"status": "ended", "outcome": last_outcome(room.match_ids[-1])}
+            if not room.match_ids and await start_if_ready(room_id, x_parley_token):
+                continue
             if loop.time() >= deadline:
                 problems = R.start_problems(room)
                 return {"status": "not_started", "detail": "; ".join(problems) or "starting"}
             await asyncio.sleep(1)
 
     @app.post("/api/rooms/{room_id}/turn")
-    def send_turn(room_id: str, body: TurnBody, x_parley_token: Token = None):
+    async def send_turn(room_id: str, body: TurnBody, x_parley_token: Token = None):
+        # async: answering resolves an asyncio future, which only the event loop's thread may do
         room = load(room_id)
         seat = room.acting(x_parley_token, body.seat_of)
         box = live_box(room, seat.name)
-        if box is None or box.pending is None:
+        pending = box.open_turn if box else None
+        if pending is None:
             raise HTTPException(409, "it isn't your turn; wait for it first")
         action = Action(type=body.action) if isinstance(body.action, str) else body.action
         turn = Turn(
-            role=box.pending.view.role,
+            role=pending.view.role,
             message=body.message,
             action=action,
             follow_up=body.follow_up,

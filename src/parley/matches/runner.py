@@ -16,7 +16,7 @@ from parley.core.spec import GameSpec
 from parley.core.types import Outcome, Turn
 from parley.judge import Judge, apply_judgment
 from parley.llm.client import LLMClient
-from parley.matches.seats import Seat, build_agent, seat_fingerprint
+from parley.matches.seats import LiveSeat, Seat, build_agent, seat_fingerprint
 from parley.metrics import episode_metrics
 
 
@@ -115,7 +115,9 @@ async def run_match(
                         cfg.seats[sid],
                         client,
                         seed,
-                        live.box(match_id, sid) if live else None,
+                        live.box(match_id, sid)
+                        if live and isinstance(cfg.seats[sid], LiveSeat)
+                        else None,
                         on_pending,
                     )
                     for role, sid in assignment.items()

@@ -48,6 +48,9 @@ def test_two_live_agents_talk_and_agree_in_writing(api, tmp_path):
     assert first["status"] == "your_turn" and first["role"] == "A"
     assert "Agree the JSON shape of /users" in first["prompt"]
     assert "agreement (text" in first["prompt"]
+    assert "Reply format" not in first["prompt"]  # live agents answer with parley_say
+    again = api.post(f"/api/rooms/{room}/matches", json={}, headers=h(ada))
+    assert again.status_code == 409  # one talk at a time
     early = api.post(f"/api/rooms/{room}/turn", json={"message": "hi"}, headers=h(bob))
     assert early.status_code == 409  # not Bob's turn
 
@@ -71,6 +74,9 @@ def test_two_live_agents_talk_and_agree_in_writing(api, tmp_path):
     assert ended["outcome"]["end_reason"] == "accept"
     assert ended["outcome"]["deal"]["terms"] == {"agreement": "id: int, name: str"}
 
+    later = wait(api, room, bob)  # after the talk, from the store once the mailboxes are gone
+    assert later["status"] == "ended" and later["outcome"]["end_reason"] == "accept"
+
     match_id = joined["match_id"]
     episodes = api.get(f"/api/rooms/{room}/matches/{match_id}", headers=h(ada)).json()["episodes"]
     assert len(episodes) == 1  # one talk: no reruns or role swaps
@@ -82,8 +88,12 @@ def test_live_rooms_play_once_without_a_judge():
     room, ada = R.open_talk("Divide the migration work", "Ada", "claude-code")
     assert room.settings.judge_model is None
     assert not room.locked
-    R.join_talk(room, "Bob")
-    assert room.locked and all(p.ready for p in room.participants)
+    bob = R.join_talk(room, "Bob")
+    assert room.locked and not R.start_problems(room)
+    R.unlock(room, bob)  # someone watching edits the game; agreeing again needs no "ready"
+    R.agree(room, ada, room.version)
+    R.agree(room, bob, room.version)
+    assert not R.start_problems(room)
     cfg = R.match_config(room, runs=5)
     assert (cfg.runs, cfg.swap_roles, cfg.parallel, cfg.episode_attempts) == (1, False, 1, 1)
 
@@ -116,3 +126,33 @@ async def test_mailbox_hands_the_reply_to_the_engine():
     (turns, outcome), _ = await asyncio.gather(episode, answer())
     assert outcome.end_reason == "walk_away" and turns[0].message == "bye"
     assert box.pending is None
+
+
+def test_a_ready_talk_that_never_started_starts_on_the_next_poll(api, tmp_path):
+    room, ada = R.open_talk("Agree the release date", "Ada")
+    R.join_talk(room, "Bob")
+    Store(tmp_path / "db.sqlite").save_room(room.id, room.model_dump_json())
+    assert wait(api, room.id, ada)["status"] == "your_turn"
+
+
+def test_a_failed_talk_ends_for_the_live_agents(api, monkeypatch):
+    async def broken(*args, **kwargs):
+        raise RuntimeError("provider down")
+
+    monkeypatch.setattr("parley.api.app.run_match", broken)
+    room = api.post("/api/talks", json={"goal": "anything", "name": "Ada"}).json()
+    api.post(f"/api/rooms/{room['room_id']}/talk/join", json={"name": "Bob"})
+    ended = wait(api, room["room_id"], room["token"])
+    assert ended["status"] == "ended" and ended["outcome"]["end_reason"] == "error"
+
+
+async def test_an_answered_turn_is_not_handed_out_again():
+    box = Mailbox()
+    agent = LiveAgent(box, timeout=5)
+    spec = work_talk("anything")
+    task = asyncio.create_task(run_episode(spec, {"A": agent, "B": LiveAgent(Mailbox(), 0.01)}))
+    await box.wait(5)
+    assert box.answer(Turn(role="A", message="hi"))
+    assert box.open_turn is None  # answered, though the engine hasn't picked it up yet
+    assert not box.answer(Turn(role="A", message="again"))
+    await task
