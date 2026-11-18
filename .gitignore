@@ -7,3 +7,22 @@ __pycache__/
 node_modules/
 .next/
 research/pdfs/
+
+# Copied skills without a license: kept locally, never published (see research/.claude/skills/SOURCES.md)
+research/.claude/skills/literature-review/
+research/.claude/skills/novelty-assessment/
+research/.claude/skills/idea-generation/
+research/.claude/skills/research-planning/
+research/.claude/skills/data-analysis/
+research/.claude/skills/math-reasoning/
+research/.claude/skills/paper-writing-section/
+research/.claude/skills/related-work-writing/
+research/.claude/skills/figure-generation/
+research/.claude/skills/table-generation/
+research/.claude/skills/citation-management/
+research/.claude/skills/backward-traceability/
+research/.claude/skills/self-review/
+research/.claude/skills/latex-formatting/
+research/.claude/skills/paper-compilation/
+research/.claude/skills/paper-revision/
+research/.claude/skills/rebuttal-writing/
