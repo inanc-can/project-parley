@@ -22,3 +22,24 @@
 [submodule "research/code/negotiation-arena"]
 	path = research/code/negotiation-arena
 	url = https://github.com/vinid/NegotiationArena.git
+[submodule "parley/research/agenticpay/code"]
+	path = parley/research/agenticpay/code
+	url = https://github.com/SafeRL-Lab/AgenticPay.git
+[submodule "parley/research/deal-or-no-deal/code"]
+	path = parley/research/deal-or-no-deal/code
+	url = https://github.com/facebookresearch/end-to-end-negotiator.git
+[submodule "parley/research/gama-bench/code"]
+	path = parley/research/gama-bench/code
+	url = https://github.com/CUHK-ARISE/GAMABench.git
+[submodule "parley/research/gtbench/code"]
+	path = parley/research/gtbench/code
+	url = https://github.com/jinhaoduan/GTBench.git
+[submodule "parley/research/llm-deliberation/code"]
+	path = parley/research/llm-deliberation/code
+	url = https://github.com/S-Abdelnabi/LLM-Deliberation.git
+[submodule "parley/research/melting-pot/code"]
+	path = parley/research/melting-pot/code
+	url = https://github.com/google-deepmind/meltingpot.git
+[submodule "parley/research/negotiation-arena/code"]
+	path = parley/research/negotiation-arena/code
+	url = https://github.com/vinid/NegotiationArena.git
