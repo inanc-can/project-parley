@@ -3,7 +3,8 @@
 export type Role = { name: string; private_brief: string; private_values: Record<string, number> };
 export type DealField = {
   name: string;
-  type: "number" | "integer";
+  type: "number" | "integer" | "text";
+  max_length?: number;
   min: number | null;
   max: number | null;
   description: string;
@@ -33,9 +34,13 @@ export type Protocol =
       show_horizon: boolean;
     };
 
+// A file in the shared context, kept as the text agents read (images hold a description).
+export type SharedFile = { name: string; mime: string; sha256: string; text: string };
+
 export type GameSpec = {
   title: string;
   shared_context: string;
+  files?: SharedFile[];
   roles: Role[];
   deal_fields: DealField[];
   scoring: Scoring;
@@ -55,7 +60,9 @@ export type Seat =
       strategy: string;
       temperature: number;
     }
-  | { kind: "scripted"; name: string; params: Record<string, unknown> };
+  | { kind: "scripted"; name: string; params: Record<string, unknown> }
+  // Played by an outside agent (Claude Code, Grok CLI, ...) through `parley mcp`.
+  | { kind: "live"; client: string };
 
 export type RoomSettings = { allowed_models: string[]; judge_model: string | null; parallel: number };
 
@@ -146,6 +153,7 @@ export type MatchEvent =
   | { type: "match_start"; match_id: string; runs: number }
   | { type: "episode_start"; index: number; assignment: Record<string, string>; attempt: number }
   | { type: "turn"; index: number; turn: Turn }
+  | { type: "turn_pending"; index: number; role: string }
   | { type: "episode_retry"; index: number; attempt: number; error: string }
   | { type: "episode_end"; index: number; outcome: Outcome; error: string | null }
   | { type: "match_end"; match_id: string }

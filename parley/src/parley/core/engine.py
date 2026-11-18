@@ -36,7 +36,7 @@ def _view(spec: GameSpec, role: str, transcript: list[Turn], **kw) -> RoleView:
         title=spec.title,
         role=role,
         roles=spec.role_names(),
-        shared_context=spec.shared_context,
+        shared_context=spec.full_context(),
         private_brief=r.private_brief,
         private_values=r.private_values,
         deal_fields=spec.deal_fields,

@@ -20,6 +20,7 @@ type LiveEpisode = {
   outcome?: Outcome;
   error?: string | null;
   retrying?: string; // the last failed attempt's error, while the episode is replayed
+  pending?: string; // role whose live agent (Claude Code, ...) is being waited for
 };
 
 export function MatchPanel({
@@ -130,7 +131,8 @@ function LiveMatch({
         const ep = "index" in e ? next[e.index] : undefined;
         if (e.type === "episode_start")
           next[e.index] = { assignment: e.assignment, turns: [], retrying: e.attempt > 1 ? ep?.retrying : undefined };
-        if (e.type === "turn" && ep) next[e.index] = { ...ep, turns: [...ep.turns, e.turn] };
+        if (e.type === "turn_pending" && ep) next[e.index] = { ...ep, pending: e.role };
+        if (e.type === "turn" && ep) next[e.index] = { ...ep, turns: [...ep.turns, e.turn], pending: undefined };
         if (e.type === "episode_retry" && ep) next[e.index] = { ...ep, retrying: e.error };
         if (e.type === "episode_end" && ep) next[e.index] = { ...ep, outcome: e.outcome, error: e.error, retrying: undefined };
         return next;
@@ -149,7 +151,7 @@ function LiveMatch({
     source.onerror = () => {
       if (source.readyState === EventSource.CLOSED) finish();
     };
-    const types = ["match_start", "episode_start", "turn", "episode_retry", "episode_end", "match_end", "error"];
+    const types = ["match_start", "episode_start", "turn_pending", "turn", "episode_retry", "episode_end", "match_end", "error"];
     for (const t of types) source.addEventListener(t, handle);
     return () => source.close();
   }, [roomId, matchId]);
@@ -183,6 +185,11 @@ function LiveMatch({
         )}
         {current?.error && <p className="text-destructive text-sm">Failed after every attempt: {current.error}</p>}
         {current && <Transcript turns={current.turns} seatOf={current.assignment} />}
+        {current?.pending && !current.outcome && (
+          <p className="label-mono text-muted-foreground">
+            Waiting for {current.assignment[current.pending] ?? current.pending}&apos;s agent…
+          </p>
+        )}
         {current?.outcome && (
           <p className="text-sm">
             <b>{current.outcome.end_reason}</b>

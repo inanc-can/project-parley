@@ -8,6 +8,7 @@ import type {
   RoomSettings,
   RoomView,
   Seat,
+  SharedFile,
 } from "./types";
 
 // Each room gets its own participant token, kept in this browser only.
@@ -102,6 +103,14 @@ export const api = {
 
   putGame: (roomId: string, spec: GameSpec) =>
     call(`/rooms/${roomId}/game`, { method: "PUT", body: json(spec), roomId }),
+  /** Converts a file to the text agents will read; it joins the game when the draft is saved. */
+  addFile: (roomId: string, file: { name: string; mime: string; data: string }) =>
+    call<SharedFile>(`/rooms/${roomId}/files`, { method: "POST", body: json(file), roomId }),
+  summariseFiles: (roomId: string, files: SharedFile[], context: string) =>
+    call<{ text: string }>(`/rooms/${roomId}/files/summary`, { method: "POST", body: json({ files, context }), roomId }),
+  /** Searches the web for a topic and writes up what it finds (20–60 seconds). */
+  research: (roomId: string, topic: string, context: string) =>
+    call<{ text: string }>(`/rooms/${roomId}/research`, { method: "POST", body: json({ topic, context }), roomId }),
   agree: (roomId: string, version: number) =>
     call(`/rooms/${roomId}/game/agree`, { method: "POST", body: json({ version }), roomId }),
   unlock: (roomId: string) => call(`/rooms/${roomId}/game/unlock`, { method: "POST", roomId }),

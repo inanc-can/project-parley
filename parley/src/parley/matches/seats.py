@@ -6,6 +6,7 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field
 
 from parley.agents import scripted
+from parley.agents.live import LiveAgent, Mailbox
 from parley.agents.llm import LLMAgent
 from parley.agents.team import Critic, TeamAgent
 from parley.core.agent import Agent
@@ -37,10 +38,29 @@ class ScriptedSeat(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
 
 
-Seat = Annotated[LLMSeat | TeamSeat | ScriptedSeat, Field(discriminator="kind")]
+class LiveSeat(BaseModel):
+    """Played by an agent outside Parley (e.g. Claude Code) through the API's /turn endpoints.
+    `client` is a free label such as "claude-code" or "grok-cli", kept in the record."""
+
+    kind: Literal["live"] = "live"
+    client: str = ""
 
 
-def build_agent(seat: Seat, client: LLMClient, seed: int) -> Agent:
+Seat = Annotated[LLMSeat | TeamSeat | ScriptedSeat | LiveSeat, Field(discriminator="kind")]
+
+
+def build_agent(
+    seat: Seat,
+    client: LLMClient,
+    seed: int,
+    mailbox: Mailbox | None = None,
+    on_pending=None,
+) -> Agent:
+    """`mailbox` (and `on_pending`) are for live seats: where their turns wait for an answer."""
+    if isinstance(seat, LiveSeat):
+        if mailbox is None:
+            raise ValueError("a live seat can only play in a room, through the API")
+        return LiveAgent(mailbox, on_pending=on_pending)
     if isinstance(seat, LLMSeat):
         return LLMAgent(client, seat.model, seat.strategy, seat.temperature, seed)
     if isinstance(seat, TeamSeat):

@@ -10,6 +10,7 @@ from parley.core.spec import (
     GameSpec,
     MatrixScoring,
     Role,
+    SharedFile,
     SimultaneousRounds,
     SurplusScoring,
     ValuationsScoring,
@@ -266,3 +267,12 @@ def test_specs_saved_with_the_old_alternating_kind_load_as_strict():
     p = GameSpec.model_validate(data).protocol
     assert isinstance(p, Conversation)
     assert (p.turn_taking, p.show_limit, p.max_messages, p.first) == ("strict", True, 6, 1)
+
+
+async def test_agents_read_the_shared_files_after_the_context():
+    spec = car_sale(files=[SharedFile(name="report.md", text="Mileage: 120k km.")])
+    seller = Says(silent())
+    await run_episode(spec, {"seller": seller, "buyer": Says(silent())})
+    rules = render_rules(seller.views[0])
+    assert spec.shared_context in rules
+    assert "## Shared files (every player has these)\n\n### report.md\nMileage: 120k km." in rules

@@ -2,6 +2,7 @@
 (header X-Parley-Token). The SSE stream takes it as ?token=: EventSource can't set headers."""
 
 import asyncio
+import base64
 import json
 import uuid
 from typing import Annotated, Any
@@ -14,15 +15,20 @@ from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 from sse_starlette.sse import EventSourceResponse
 
+from parley import files as F
+from parley import research as RS
+from parley.agents.live import LiveTurns
+from parley.agents.parsing import render_rules, render_state
 from parley.api import assistant as A
 from parley.api import rooms as R
 from parley.api.events import MatchEvents
 from parley.core.baselines import reference_solutions
-from parley.core.spec import GameSpec
+from parley.core.spec import GameSpec, SharedFile
+from parley.core.types import Action, Turn
 from parley.llm.cache import Cache
 from parley.llm.client import LLMClient
 from parley.matches.runner import run_match
-from parley.matches.seats import Seat
+from parley.matches.seats import LiveSeat, Seat
 from parley.storage import Store
 from parley.templates import TEMPLATES
 
@@ -56,8 +62,45 @@ class StartBody(BaseModel):
     runs: int | None = None
 
 
+class TalkBody(BaseModel):
+    goal: str
+    name: str
+    client: str = ""  # e.g. "claude-code", "grok-cli"
+
+
+class JoinTalkBody(BaseModel):
+    name: str
+    client: str = ""
+
+
+class TurnBody(BaseModel):
+    """A live agent's turn: what it says, and at most one formal action."""
+
+    message: str = ""
+    action: Action | str | None = None  # an object, or just its type ("accept", "pass", ...)
+    follow_up: bool = False
+    reasoning: str | None = None  # private: kept in the record, never shown to the other side
+    seat_of: str | None = None
+
+
 class ChatBody(BaseModel):
     messages: list[A.ChatMessage]
+
+
+class FileBody(BaseModel):
+    name: str
+    mime: str = ""
+    data: str  # base64
+
+
+class SummaryBody(BaseModel):
+    files: list[SharedFile]
+    context: str = ""
+
+
+class ResearchBody(BaseModel):
+    topic: str
+    context: str = ""
 
 
 def create_app(store: Store | None = None, client: LLMClient | None = None) -> FastAPI:
@@ -66,6 +109,8 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
     client = client or LLMClient(cache=Cache())
     store.mark_interrupted()  # matches this process didn't start can't still be running
     live: dict[str, MatchEvents] = {}
+    turns = LiveTurns()  # mailboxes of live seats (outside agents answering through /turn)
+    background: set[asyncio.Task] = set()  # running talks (keeps their tasks referenced)
     lock = asyncio.Lock()  # serialises room read-modify-write
 
     app = FastAPI(title="Parley")
@@ -127,6 +172,41 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
     async def put_game(room_id: str, spec: GameSpec, x_parley_token: Token = None):
         return await mutate(room_id, lambda r: R.update_game(r, x_parley_token, spec))
 
+    # --- shared files: converted here; they join the game when the draft is saved ---
+    @app.post("/api/rooms/{room_id}/files")
+    async def add_file(room_id: str, body: FileBody, x_parley_token: Token = None):
+        load(room_id).participant(x_parley_token)
+        try:
+            data = base64.b64decode(body.data, validate=True)
+        except ValueError:
+            raise HTTPException(400, "the file data isn't valid base64") from None
+        try:
+            return await F.to_shared_file(body.name, body.mime, data, client)
+        except F.FileError as e:
+            raise HTTPException(400, str(e)) from None
+        except Exception as e:  # the vision model failed
+            raise HTTPException(502, f"couldn't describe {body.name}: {e}") from None
+
+    @app.post("/api/rooms/{room_id}/files/summary")
+    async def summarise_files(room_id: str, body: SummaryBody, x_parley_token: Token = None):
+        load(room_id).participant(x_parley_token)
+        try:
+            return {"text": await F.summarise(body.files, body.context, client)}
+        except F.FileError as e:
+            raise HTTPException(400, str(e)) from None
+        except Exception as e:
+            raise HTTPException(502, f"the summary failed: {e}") from None
+
+    @app.post("/api/rooms/{room_id}/research")
+    async def research(room_id: str, body: ResearchBody, x_parley_token: Token = None):
+        load(room_id).participant(x_parley_token)
+        try:
+            return {"text": await RS.research(body.topic, body.context, client)}
+        except RS.ResearchError as e:
+            raise HTTPException(400, str(e)) from None
+        except Exception as e:
+            raise HTTPException(502, f"the research failed: {e}") from None
+
     @app.post("/api/rooms/{room_id}/game/agree")
     async def agree(room_id: str, body: VersionBody, x_parley_token: Token = None):
         return await mutate(room_id, lambda r: R.agree(r, x_parley_token, body.version))
@@ -165,14 +245,27 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
         return await mutate(room_id, apply)
 
     # --- matches ---
-    async def launch(room_id: str, token: str | None, runs: int | None, tasks: BackgroundTasks):
-        """Start a match in the background; the endpoint and the assistant both use this."""
+    def running(match_id: str) -> bool:
+        return match_id in live and not live[match_id].done
+
+    async def launch(
+        room_id: str, token: str | None, runs: int | None, tasks: BackgroundTasks | None
+    ):
+        """Start a match in the background; the endpoint and the assistant both use this.
+        Without `tasks` it runs as its own asyncio task, not tied to the request: a talk between
+        live agents waits on their later requests."""
         match_id = uuid.uuid4().hex[:12]
 
         def prepare(r: R.Room):
             r.participant(token)
             cfg = R.match_config(r, runs)
+            if R.has_live_seat(r) and any(running(m) for m in r.match_ids):
+                raise R.RoomError(409, "this talk is already running")
             r.match_ids.append(match_id)
+            # Open the live seats' mailboxes now, so whoever sees the new match id finds them.
+            for sid, seat in cfg.seats.items():
+                if isinstance(seat, LiveSeat):
+                    turns.box(match_id, sid)
             return {"match_id": match_id, "cfg": cfg}
 
         prepared = await mutate(room_id, prepare)
@@ -182,14 +275,117 @@ def create_app(store: Store | None = None, client: LLMClient | None = None) -> F
 
         async def run():
             try:
-                await run_match(cfg, client, match_id, events.push, store.save_episode)
+                await run_match(cfg, client, match_id, events.push, store.save_episode, turns)
                 store.set_status(match_id, "done")
             except Exception as e:  # surface to viewers instead of dying silently
+                message = f"{type(e).__name__}: {e}"
                 store.set_status(match_id, "failed")
-                await events.push({"type": "error", "message": f"{type(e).__name__}: {e}"})
+                await turns.end(match_id, {"end_reason": "error", "error": message})
+                await events.push({"type": "error", "message": message})
+            finally:
+                turns.drop(match_id)
 
-        tasks.add_task(run)
+        if tasks is None:
+            task = asyncio.create_task(run())
+            background.add(task)
+            task.add_done_callback(background.discard)
+        else:
+            tasks.add_task(run)
         return prepared
+
+    async def start_if_ready(room_id: str, token: str) -> str | None:
+        """Start the talk once everyone is in and ready (the second agent to join starts it)."""
+        try:
+            return (await launch(room_id, token, None, None))["match_id"]
+        except R.RoomError:  # not ready yet, or already running
+            return None
+
+    # --- talks: outside agents (Claude Code, Grok CLI, ...) take live seats ---
+    @app.post("/api/talks")
+    def open_talk(body: TalkBody):
+        room, token = R.open_talk(body.goal, body.name, body.client)
+        save(room)
+        return {"room_id": room.id, "token": token}
+
+    @app.post("/api/rooms/{room_id}/talk/join")
+    async def join_talk(room_id: str, body: JoinTalkBody):
+        joined = await mutate(room_id, lambda r: {"token": R.join_talk(r, body.name, body.client)})
+        token = joined["token"]
+        return {"token": token, "match_id": await start_if_ready(room_id, token)}
+
+    def live_box(room: R.Room, seat: str):
+        """The mailbox of `seat` in the room's latest match, while that match runs."""
+        return turns.get(room.match_ids[-1], seat) if room.match_ids else None
+
+    def last_outcome(match_id: str) -> dict[str, Any]:
+        """How a finished match ended, from the store (its mailboxes are gone by then)."""
+        episodes = store.episodes(match_id)
+        return episodes[-1].outcome.model_dump() if episodes else {"end_reason": "error"}
+
+    @app.get("/api/rooms/{room_id}/turn")
+    async def wait_turn(
+        room_id: str, wait: float = 50, seat_of: str | None = None, x_parley_token: Token = None
+    ):
+        """Long poll for a live seat: returns as soon as it is this seat's turn or the talk is
+        over, else after `wait` seconds with status "waiting" (call again). A talk that is ready
+        but not running yet (say, agreed again after an edit) is started here."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(0.0, min(wait, 120))
+        while True:
+            room = load(room_id)
+            seat = room.acting(x_parley_token, seat_of)
+            box = live_box(room, seat.name)
+            if box:
+                await box.wait(max(0.0, deadline - loop.time()))
+                if p := box.open_turn:
+                    v, feedback = p.view, p.feedback
+                    prompt = render_rules(v, json_reply=False) + "\n\n"
+                    prompt += render_state(v, json_reply=False)
+                    if feedback:
+                        prompt += f"\n\nYour previous turn was refused: {feedback}\nTry again."
+                    return {
+                        "status": "your_turn",
+                        "role": v.role,
+                        "prompt": prompt,
+                        "feedback": feedback,
+                        "allowed_actions": v.allowed_actions,
+                        "can_follow_up": v.can_follow_up,
+                        "standing_offer": v.standing_offer,
+                        "transcript": v.transcript,
+                    }
+                if box.outcome:
+                    return {"status": "ended", "outcome": box.outcome}
+                return {"status": "waiting", "detail": "the other side is speaking; call again"}
+            if room.match_ids and not running(room.match_ids[-1]):
+                return {"status": "ended", "outcome": last_outcome(room.match_ids[-1])}
+            if not room.match_ids and await start_if_ready(room_id, x_parley_token):
+                continue
+            if loop.time() >= deadline:
+                problems = R.start_problems(room)
+                return {"status": "not_started", "detail": "; ".join(problems) or "starting"}
+            await asyncio.sleep(1)
+
+    @app.post("/api/rooms/{room_id}/turn")
+    async def send_turn(room_id: str, body: TurnBody, x_parley_token: Token = None):
+        # async: answering resolves an asyncio future, which only the event loop's thread may do
+        room = load(room_id)
+        seat = room.acting(x_parley_token, body.seat_of)
+        box = live_box(room, seat.name)
+        pending = box.open_turn if box else None
+        if pending is None:
+            raise HTTPException(409, "it isn't your turn; wait for it first")
+        action = Action(type=body.action) if isinstance(body.action, str) else body.action
+        turn = Turn(
+            role=pending.view.role,
+            message=body.message,
+            action=action,
+            follow_up=body.follow_up,
+            reasoning=body.reasoning,
+            raw_output=body.model_dump_json(exclude={"seat_of"}),
+        )
+        if not box.answer(turn):
+            raise HTTPException(409, "it isn't your turn; wait for it first")
+        return {"ok": True}
 
     @app.post("/api/rooms/{room_id}/matches")
     async def start(

@@ -37,6 +37,13 @@ export function RoomClient() {
   const offline = useRef(false);
 
   const refresh = useCallback(async () => {
+    // A watch link from `parley mcp` carries the token in the fragment: keep it, then drop it
+    // from the address bar so "Copy invite link" doesn't hand it on.
+    const fromLink = new URLSearchParams(window.location.hash.slice(1)).get("token");
+    if (fromLink) {
+      setToken(roomId, fromLink);
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
     if (!getToken(roomId)) {
       setNeedsJoin(true);
       return;

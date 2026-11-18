@@ -41,6 +41,8 @@ export function SeatEditor({ room, onChange, seatOf }: { room: RoomView; onChang
   }
 
 
+  if (mine.seat?.kind === "live") return <LiveSeatCard client={mine.seat.client} />;
+
   const yours = new Set([room.me.name, ...room.controlled.map((c) => c.name)]);
   const others = room.participants.filter((p) => !yours.has(p.name));
 
@@ -106,7 +108,7 @@ export function SeatEditor({ room, onChange, seatOf }: { room: RoomView; onChang
             </div>
           )}
 
-          {seat.kind !== "scripted" && (
+          {(seat.kind === "llm" || seat.kind === "team") && (
             <>
               <div className="flex flex-col gap-2">
                 <Label>Strategy instructions</Label>
@@ -204,5 +206,20 @@ export function SeatEditor({ room, onChange, seatOf }: { room: RoomView; onChang
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/** A seat played by the person's own agent (Claude Code, Grok CLI, ...) through `parley mcp`. */
+function LiveSeatCard({ client }: { client: string }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Your agent · {client || "live agent"}</CardTitle>
+        <CardDescription>
+          Your own agent plays this seat through Parley&apos;s MCP server. It speaks for you with what it knows
+          about your work, and every turn it takes shows up live here.
+        </CardDescription>
+      </CardHeader>
+    </Card>
   );
 }

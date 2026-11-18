@@ -104,3 +104,25 @@ def serve(host: str = "127.0.0.1", port: int = 8000, reload: bool = False):
     import uvicorn
 
     uvicorn.run("parley.api.app:create_app", factory=True, host=host, port=port, reload=reload)
+
+
+@app.command("mcp")
+def mcp_server(
+    client: str = typer.Option("", help='who is calling, kept in the record, e.g. "claude-code"'),
+    url: str = typer.Option("", help="the Parley API (default $PARLEY_URL or localhost:8000)"),
+    http_port: int | None = typer.Option(None, help="serve streamable HTTP on this port instead"),
+    path: str = typer.Option("/mcp", help="the HTTP endpoint's path; make it hard to guess"),
+    sessions: str = typer.Option("", help="token file (default ~/.parley/agent-talks.json)"),
+):
+    """Run the MCP server that lets an agent take a seat in a Parley talk. stdio for local
+    agents (`claude mcp add parley -- uv run parley mcp`); --http-port for hosted ones such as
+    a grok.com custom connector, behind a tunnel."""
+    import os
+
+    from parley.mcp_server import main
+
+    if client:
+        os.environ["PARLEY_CLIENT"] = client
+    if url:
+        os.environ["PARLEY_URL"] = url
+    main(http_port, path, Path(sessions).expanduser() if sessions else None)

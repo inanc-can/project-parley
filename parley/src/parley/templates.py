@@ -3,8 +3,10 @@
 from collections.abc import Callable
 
 from parley.core.spec import (
+    Conversation,
     DealField,
     GameSpec,
+    JudgeOnlyScoring,
     MatrixScoring,
     Role,
     SimultaneousRounds,
@@ -136,9 +138,33 @@ def multi_issue_trade() -> GameSpec:
     )
 
 
+def work_talk(goal: str = "") -> GameSpec:
+    """Two people's own agents (e.g. Claude Code) talk about the work each is doing and agree
+    on something in writing. The agents bring their own context, so there are no briefs."""
+    return GameSpec(
+        title="Work talk",
+        shared_context=(
+            goal
+            or "Two agents, each working for a different person, talk about the work their "
+            "people are doing and agree on how to proceed."
+        ),
+        roles=[Role(name="A"), Role(name="B")],
+        deal_fields=[
+            DealField(
+                name="agreement",
+                type="text",
+                description="what both sides agree to, written so each person can act on it",
+            )
+        ],
+        scoring=JudgeOnlyScoring(),
+        protocol=Conversation(max_messages=60),
+    )
+
+
 TEMPLATES: dict[str, Callable[[], GameSpec]] = {
     "ultimatum": ultimatum,
     "ipd": iterated_prisoners_dilemma,
     "buy_sell": buy_sell,
     "multi_issue_trade": multi_issue_trade,
+    "work_talk": work_talk,
 }

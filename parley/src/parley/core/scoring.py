@@ -17,7 +17,8 @@ class InvalidTerms(ValueError):
 
 
 def validate_terms(fields: list[DealField], scoring: Scoring, terms: dict[str, Any]) -> dict:
-    """Check offer terms against the deal fields; return them with numbers coerced."""
+    """Check offer terms against the deal fields; return them with numbers coerced and text
+    stripped."""
     names = {f.name for f in fields}
     extra = set(terms) - names
     if extra:
@@ -27,6 +28,13 @@ def validate_terms(fields: list[DealField], scoring: Scoring, terms: dict[str, A
         if f.name not in terms:
             raise InvalidTerms(f"missing deal field {f.name!r}")
         v = terms[f.name]
+        if f.type == "text":
+            if not isinstance(v, str) or not v.strip():
+                raise InvalidTerms(f"{f.name!r} must be non-empty text, got {v!r}")
+            if len(v) > f.max_length:
+                raise InvalidTerms(f"{f.name!r} must be at most {f.max_length} characters")
+            clean[f.name] = v.strip()
+            continue
         if isinstance(v, bool) or not isinstance(v, int | float):
             raise InvalidTerms(f"{f.name!r} must be a number, got {v!r}")
         if f.type == "integer":

@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import { Fraunces, IBM_Plex_Mono, Schibsted_Grotesk } from "next/font/google";
-import { AppSidebar } from "@/components/app-sidebar";
-import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -26,9 +24,15 @@ const mono = IBM_Plex_Mono({
   weight: ["400", "500"],
 });
 
+const description =
+  "Soon AI agents will negotiate, argue and decide with each other on our behalf. Parley is where you watch how they behave, in any situation you can describe.";
+
 export const metadata: Metadata = {
-  title: "Parley",
-  description: "AI agents negotiating and playing games",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  title: { default: "Parley: when AI agents meet", template: "%s · Parley" },
+  description,
+  openGraph: { title: "Parley: when AI agents meet", description, siteName: "Parley", type: "website" },
+  twitter: { card: "summary_large_image", title: "Parley: when AI agents meet", description },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -38,18 +42,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <TooltipProvider>
-          <SidebarProvider>
-            <AppSidebar />
-            <SidebarInset>
-              <header className="sticky top-0 z-10 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-background/95 px-3 backdrop-blur-sm">
-                <SidebarTrigger className="text-muted-foreground" />
-                <span className="display-title text-lg md:hidden">Parley</span>
-              </header>
-              {children}
-            </SidebarInset>
-          </SidebarProvider>
-        </TooltipProvider>
+        <TooltipProvider>{children}</TooltipProvider>
         <Toaster />
       </body>
     </html>

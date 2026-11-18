@@ -13,9 +13,10 @@ class Role(BaseModel):
 
 class DealField(BaseModel):
     name: str
-    type: Literal["number", "integer"] = "number"
+    type: Literal["number", "integer", "text"] = "number"
     min: float | None = None
     max: float | None = None
+    max_length: int = 4000  # text only
     description: str = ""
 
 
@@ -108,9 +109,20 @@ CONVERSATION_ACTIONS = ["offer", "accept", "reject", "walk_away"]
 PASS = "pass"  # natural turn-taking: stay silent this turn (not a formal decision)
 
 
+class SharedFile(BaseModel):
+    """A file added to the shared context, kept as the text every agent reads. Images and other
+    non-text files hold a description written when they were added."""
+
+    name: str
+    mime: str = ""
+    sha256: str = ""  # of the original bytes, so a study can tell which file was used
+    text: str
+
+
 class GameSpec(BaseModel):
     title: str
     shared_context: str
+    files: list[SharedFile] = Field(default_factory=list)
     roles: list[Role]
     deal_fields: list[DealField] = Field(default_factory=list)
     scoring: Scoring
@@ -156,6 +168,14 @@ class GameSpec(BaseModel):
         if isinstance(s, MatrixScoring) and not isinstance(self.protocol, SimultaneousRounds):
             raise ValueError("matrix scoring needs the simultaneous_rounds protocol")
         return self
+
+    def full_context(self) -> str:
+        """The shared context followed by the text of every shared file."""
+        parts = [self.shared_context]
+        if self.files:
+            parts.append("## Shared files (every player has these)")
+            parts += [f"### {f.name}\n{f.text}" for f in self.files]
+        return "\n\n".join(p for p in parts if p)
 
     def role(self, name: str) -> Role:
         return next(r for r in self.roles if r.name == name)
