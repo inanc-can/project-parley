@@ -3,6 +3,9 @@
 Literature knowledge base for the Parley study (LLM agents negotiating; working question in
 `proposal/gap.md`). The software lives in `../parley` and never imports from here.
 
+**Read `CONTEXT.md` first** — current question, decisions, where I left off, how to work with me.
+At the end of a session, update its "Where I left off" section.
+
 ## Layout
 - `papers/<citekey>.md` — one note per paper: YAML frontmatter + fixed sections.
 - `pdfs/<citekey>.pdf` — gitignored; re-fetch with `uv run scripts/arxiv.py <id> --pdf <citekey>`.
