@@ -1,0 +1,9 @@
+# Human behaviour in the one-shot ultimatum game, for comparison with agent results.
+# VERIFY these numbers against the paper before citing them; it is not in this library yet.
+source: "Oosterbeek, Sloof & van de Kuilen (2004). Cultural differences in ultimatum game experiments: evidence from a meta-analysis. Experimental Economics 7, 171-188."
+verified: false
+human:
+  mean_offer_share: 0.40   # responder's share of the pie offered, averaged across studies
+  rejection_rate: 0.16     # share of offers rejected
+theory:
+  spe_offer_share: "smallest positive unit (computed per game by parley.core.baselines)"

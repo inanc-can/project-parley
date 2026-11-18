@@ -1,0 +1,16 @@
+{
+  "schema_version": "2.0",
+  "search_boundary_id": "SEARCH-PARLEY-001",
+  "searched_on": "2026-11-01",
+  "searched_by": "Claude (AI assistant) for İnanç Can",
+  "purpose": "Collect the sources already in the knowledge base that bear on the concede-vs-disclose hypotheses. Not a systematic search.",
+  "databases_or_indexes": ["research/papers notes", "research/proposal/drafts/2026-10-24-agent-deliberation.md (web-search checks made during that talk)"],
+  "queries": ["No new queries; sources taken from existing notes and the draft"],
+  "date_limits": "None",
+  "language_limits": "English",
+  "inclusion_scope": "Sources on LLM negotiation payoffs, agent information leakage and delegated-agent loyalty already recorded in the knowledge base.",
+  "exclusion_scope": "Everything not already in the knowledge base, including the persuasion candidates in inbox.md.",
+  "known_limitations": ["No systematic search was run", "No source is read in full", "Publication dates are taken from arXiv identifiers (month only)"],
+  "last_result_screened_or_stop_rule": "All notes in papers/ and all sources in the 2026-10-24 draft were listed; nothing beyond them was screened.",
+  "novelty_status": "not_assessed"
+}
