@@ -22,6 +22,7 @@ const nextConfig: NextConfig = {
   },
   partialPrefetching: true,
   experimental: {
+    agentUpgrade: "security",
     // The room assistant can take minutes (a 72B model, several tool rounds); the proxy's
     // default 30 s cut it off while the API was still working.
     proxyTimeout: 300_000,
