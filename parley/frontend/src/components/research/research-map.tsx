@@ -88,6 +88,14 @@ export function ResearchMap({ data }: { data: GraphData }) {
   const plain = useMemo(() => plainIndex(data), [data]);
   const questions = useMemo(() => data.nodes.filter((n) => n.type === "question"), [data]);
 
+  // A link like /research?q=loyal opens that everyday question (used by the home page).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (!q || !byId.has(`question:${q}`)) return;
+    queueMicrotask(() => setSelected(`question:${q}`));
+    boxRef.current?.scrollIntoView({ block: "center" });
+  }, [byId, boxRef]);
+
   const colorOf = useCallback(
     (n: GraphNode) => {
       if (audience === "academic") return nodeColor(n);

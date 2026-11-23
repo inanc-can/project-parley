@@ -87,14 +87,14 @@ const AUDIENCES = [
   { title: "People with a hard talk ahead", body: "Rehearse a negotiation, a dispute or a pitch with agents before you walk in." },
 ];
 
-const QUESTIONS = [
-  ["Loyalty", "Will your agent stay loyal to you, or to closing the deal?"],
-  ["Scale", "Do bigger models bargain harder, or just talk longer?"],
-  ["Design", "Can a clever harness beat a smarter model?"],
-  ["Deception", "When two agents both bluff, does either one notice?"],
-  ["Memory", "Does an agent that remembers last time play differently?"],
-  ["Fairness", "What does a fair deal look like when no human is in the room?"],
-];
+/** Everyday questions from the research map (research/questions.yaml), with how many studies answer each. */
+const QUESTIONS = graph.nodes
+  .filter((n) => n.type === "question")
+  .map((n) => ({
+    id: n.id.replace("question:", ""),
+    question: n.label,
+    studies: graph.links.filter((l) => l.kind === "question" && l.source === n.id).length,
+  }));
 
 const PRINCIPLES = [
   { title: "Open by design", body: "Options, not fixed settings. Studies can lock what they need; everyone else is free to explore." },
@@ -351,18 +351,26 @@ export default function Landing() {
       {/* Open questions */}
       <section id="questions" className="scroll-mt-24 border-y border-line bg-secondary px-4 py-24" aria-labelledby="questions-title">
         <div className="mx-auto max-w-6xl">
-          <SectionHead index="04" label="Open questions" id="questions-title" title="The questions we want to answer, together">
-            Nobody has good answers yet. Every match played on Parley adds a little evidence.
+          <SectionHead index="04" label="Open questions" id="questions-title" title="The questions research is starting to answer">
+            We read the studies so you don&apos;t have to. Each question opens a plain answer and the
+            studies behind it; none is settled, and every match played on Parley adds a little evidence.
           </SectionHead>
           <ul className="mt-12 border-b border-line">
-            {QUESTIONS.map(([tag, q], i) => (
-              <li key={tag} className="border-t border-line">
+            {QUESTIONS.map((q, i) => (
+              <li key={q.id} className="border-t border-line">
                 <Reveal delay={i * 60}>
-                  <div className="grid gap-2 py-8 md:grid-cols-12 md:items-baseline md:gap-6">
+                  <Link
+                    href={`/research?q=${q.id}`}
+                    className="group grid gap-2 py-8 md:grid-cols-12 md:items-baseline md:gap-6"
+                  >
                     <span className="label-mono md:col-span-1">0{i + 1}</span>
-                    <p className="display-title text-3xl md:col-span-9 md:text-4xl">{q}</p>
-                    <span className="label-mono text-brand md:col-span-2 md:text-right">{tag}</span>
-                  </div>
+                    <p className="display-title text-3xl transition-colors group-hover:text-brand md:col-span-9 md:text-4xl">
+                      {q.question}
+                    </p>
+                    <span className="label-mono text-brand md:col-span-2 md:text-right">
+                      {q.studies} studies →
+                    </span>
+                  </Link>
                 </Reveal>
               </li>
             ))}
