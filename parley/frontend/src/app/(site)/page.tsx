@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -183,6 +184,42 @@ export default function Landing() {
             <HeroScenes />
           </Reveal>
         </div>
+      </section>
+
+      {/* Collaboration with debate clubs (full pitch on /debate-clubs) */}
+      <section aria-label="AI Debate Clubs" className="px-4 pb-4">
+        <Reveal className="mx-auto max-w-6xl">
+          <Link
+            href="/debate-clubs"
+            className="group flex flex-col gap-6 rounded-lg bg-brand px-8 py-8 text-white transition-colors hover:bg-brand/90 md:flex-row md:items-center md:justify-between md:px-10"
+          >
+            <div>
+              <p className="label-mono text-white/60">Collaborate · AI Debate Clubs</p>
+              <p className="display-title mt-3 text-2xl md:text-3xl">
+                Debate clubs: help us train the people who judge AI arguments
+              </p>
+              <p className="mt-4 flex items-center gap-3 text-sm text-white/70">
+                <Image
+                  src="/partners/debattierclub-muenchen.png"
+                  alt="Debattierclub München logo"
+                  width={40}
+                  height={40}
+                  className="size-10 shrink-0"
+                />
+                A pilot is being discussed with Debattierclub München.
+              </p>
+            </div>
+            <span className="flex shrink-0 items-center gap-3 text-sm text-white/80">
+              How it works
+              <span
+                aria-hidden
+                className="flex size-10 items-center justify-center rounded-full bg-white text-lg text-brand transition-transform group-hover:translate-x-1"
+              >
+                →
+              </span>
+            </span>
+          </Link>
+        </Reveal>
       </section>
 
       {/* Research entry points */}
