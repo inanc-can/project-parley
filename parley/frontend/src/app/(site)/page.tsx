@@ -1,4 +1,7 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
+
+import graph from "@/data/research-graph.json";
 
 import { RISK_REVERSAL, StartRoomButton } from "@/components/landing/cta";
 import { SITE_ONLY } from "@/lib/site";
@@ -9,6 +12,28 @@ import { Reveal } from "@/components/landing/reveal";
 import { SectionHead } from "@/components/landing/section-head";
 import { TaglineReveal } from "@/components/landing/tagline-reveal";
 import { BriefingVisual, HarnessVisual, RecordVisual, ScenesVisual } from "@/components/landing/visuals";
+
+const PAPER_COUNT = graph.nodes.filter((n) => n.type === "paper").length;
+const EVAL_COUNT = graph.nodes.filter((n) => n.type === "paper" && "eval" in n && n.eval).length;
+
+const RESEARCH_LINKS = [
+  {
+    href: "/research",
+    label: "Research map",
+    title: "What research says about agents that act for us",
+    body: "Start from an everyday question and get a plain answer, or explore how the papers, skills and topics connect.",
+    stat: PAPER_COUNT,
+    statLabel: "papers",
+  },
+  {
+    href: "/research/evals",
+    label: "Evals",
+    title: "How agents' social skills are tested today",
+    body: "Every benchmark we have read, classified by skill, scoring, counterpart and whether it tests training.",
+    stat: EVAL_COUNT,
+    statLabel: "benchmarks",
+  },
+];
 
 const MARQUEE = [
   "A used car sale",
@@ -158,6 +183,40 @@ export default function Landing() {
             <HeroScenes />
           </Reveal>
         </div>
+      </section>
+
+      {/* Research entry points */}
+      <section aria-label="Research" className="px-4 pb-24">
+        <ul className="mx-auto grid max-w-6xl gap-4 md:grid-cols-2">
+          {RESEARCH_LINKS.map((r, i) => (
+            <li key={r.href}>
+              <Reveal delay={i * 120} className="h-full">
+                <Link
+                  href={r.href}
+                  className="group flex h-full flex-col justify-between gap-10 rounded-lg border border-line bg-secondary p-8 transition-colors hover:border-brand md:p-10"
+                >
+                  <div>
+                    <p className="label-mono text-brand">{r.label}</p>
+                    <h2 className="display-title mt-4 text-3xl md:text-4xl">{r.title}</h2>
+                    <p className="mt-3 max-w-[460px] text-base text-muted-foreground">{r.body}</p>
+                  </div>
+                  <div className="flex items-end justify-between gap-6">
+                    <p className="display-title text-5xl text-brand md:text-6xl">
+                      {r.stat}
+                      <span className="label-mono ml-3 align-middle text-muted-foreground">{r.statLabel}</span>
+                    </p>
+                    <span
+                      aria-hidden
+                      className="flex size-12 shrink-0 items-center justify-center rounded-full bg-brand text-xl text-white transition-transform group-hover:translate-x-1"
+                    >
+                      →
+                    </span>
+                  </div>
+                </Link>
+              </Reveal>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {/* Scenes marquee */}

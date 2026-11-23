@@ -120,3 +120,14 @@ failures can be attributed to the agent?
 - Report agreement separately on feasible and infeasible episodes; SE+ = agreement × conditional
   surplus.
 - Bankroll mode as a compounding-loss stress test.
+
+## Map fields
+- Skills measured: negotiating value (bilateral single-price bargaining), other: belief inference about the counterpart's hidden type (reported every round), acting under uncertainty, walk-away discipline on no-deal episodes
+- Scoring: rules (surplus efficiency, agreement and false agreement, belief error against the true type; oracle ladder)
+- Agents: 2
+- Opponents: scripted (six counterpart families; an LLM only voices moves already fixed by formulas)
+- Tests: capability
+- Training evaluated: none (oracle information given in the prompt as a diagnostic, no training)
+- Transfer between skills measured: no
+- Models tested: 13 LLMs incl. Claude Opus 4.6 and 4.7, GPT-5.4, GPT-4o-mini, Grok 4.20, GLM-5.1, Qwen3.6-Plus, Doubao (full list not in the note); three fixed-concession baselines
+- Code released: https://github.com/Terms-bench

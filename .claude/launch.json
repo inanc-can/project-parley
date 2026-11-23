@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "parley-web",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--dir", "parley/frontend", "dev", "--port", "3100"],
+      "port": 3100
+    }
+  ]
+}

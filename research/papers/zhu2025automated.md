@@ -69,3 +69,14 @@ produce unequal deals, and what risks to the principals arise? (p. 1)
 - Risk metrics in money terms: out-of-budget, below-cost, overpayment, deadlock.
 - Strong-vs-weak pairings to show who bears the loss.
 - Bandit search over prompt components as a cheap defence baseline.
+
+## Map fields
+- Skills measured: negotiating value (buyer–seller price bargaining), keeping secrets (budget revealed despite instructions), other: staying within the principal's budget and cost limits
+- Scoring: mixed (rules on prices; GPT-4o extracts prices and decides accept/continue)
+- Agents: 2
+- Opponents: LLM (all buyer–seller pairings incl. self-play)
+- Tests: both (capability: profit and price reduction; risk behaviour: out-of-budget deals, overpayment)
+- Training evaluated: prompting (bandit search over 96 prompt variants)
+- Transfer between skills measured: no
+- Models tested: nine models incl. o3, o4-mini, GPT-4.1, GPT-4o-mini, GPT-3.5, DeepSeek-R1, Qwen2.5-7B (full list not in the note)
+- Code released: https://github.com/ShenzheZhu/A2A-NT

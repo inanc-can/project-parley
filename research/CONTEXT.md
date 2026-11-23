@@ -2,7 +2,7 @@
 
 A hand-off for any session (home or work laptop, any Claude account). It says where the research
 stands, what has been decided, and how to work with me. Update the "Where I left off" section at
-the end of a session. Last updated: 2026-11-18.
+the end of a session. Last updated: 2026-11-23.
 
 ## The project in one paragraph
 Master's thesis at TUM, Chair of Decision Sciences & Systems (Prof. Martin Bichler); PhD student
@@ -80,8 +80,20 @@ honest (only `full` notes support claims); findings carry numbers and page refer
 `uv run scripts/build.py` after changing notes; add a line to `proposal/gap.md` when a paper bears
 on the question.
 
-## Where I left off (2026-11-18)
-- Knowledge base: 59 notes, 51 read in full. Feynman walkthrough of the new papers paused at GIFT
+## Where I left off (2026-11-23)
+- Added `liu2026paying` (read: full): RL on one agentic environment lowers performance on others
+  ("generalization tax"); structure, not realism, predicts transfer. Supports the motivation that
+  one agent must stay skilled across setups. 67 notes, 53 read in full.
+- Proposal: question-independent sections drafted in `proposal/drafts/2026-11-23-shared-sections.md`
+  (motivation, background, related work, measurement principles, ethics, AI use). Section 4
+  (research question) is mine to write; the motivation is being revised step by step.
+- Next: one-sentence research question → one-page summary → Kassian → email a Zou-lab PhD student.
+- Earlier (2026-11-20):
+- New candidate skill for the transfer study: **acting on likelihoods** (strong models act well on
+  certain information, barely use probabilities). Seven calibration / decision-under-uncertainty
+  papers added, see `topics/uncertainty-calibration.md`; key ones `liu2024dellma` and
+  `qiu2025bayesian` (belief updating can be trained and transfers). Most are `read: partial`.
+- Knowledge base: 66 notes, 52 read in full. Feynman walkthrough of the new papers paused at GIFT
   (`lyu2026gift`); next suggested: SPIRAL/MARSHAL, then CIB.
 - Pending decision: training study (core) vs new benchmark — see "Direction under consideration".
 - TERMS-Bench note should be finished (`read: partial`) before citing it in the proposal.

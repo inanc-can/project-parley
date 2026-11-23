@@ -50,6 +50,11 @@ export default function SiteLayout({ children }: LayoutProps<"/">) {
                     Questions
                   </Link>
                 </li>
+                <li>
+                  <Link href="/research" className={FOOTER_LINK}>
+                    Research
+                  </Link>
+                </li>
               </ul>
             </div>
             <div>

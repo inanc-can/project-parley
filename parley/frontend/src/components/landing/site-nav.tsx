@@ -86,6 +86,20 @@ export function SiteNav() {
                 </a>
               </li>
             ))}
+            <li>
+              <Link
+                href="/research"
+                aria-current={pathname === "/research" ? "page" : undefined}
+                className={cn(
+                  "rounded-sm px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-brand",
+                  "aria-[current]:text-brand aria-[current]:shadow-[inset_0_-2px_0_var(--brand)]",
+                  TRANSITION,
+                  FOCUS,
+                )}
+              >
+                Research
+              </Link>
+            </li>
           </ul>
           <StartRoomButton size="sm" className="ml-2 hidden md:inline-flex" />
           <button
@@ -147,6 +161,20 @@ export function SiteNav() {
               </a>
             </li>
           ))}
+          <li className="overflow-hidden">
+            <Link
+              href="/research"
+              onClick={() => setOpen(false)}
+              className={cn(
+                "display-title block text-5xl",
+                TRANSITION,
+                FOCUS,
+                open ? `translate-y-0 opacity-100 ${STAGGER[LINKS.length]}` : "translate-y-12 opacity-0",
+              )}
+            >
+              Research
+            </Link>
+          </li>
           <li className="overflow-hidden pt-4">
             <div
               className={cn(

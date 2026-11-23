@@ -9,6 +9,7 @@
 generated/ is never edited by hand: the notes are the single source of truth.
 """
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ import yaml
 ROOT = Path(__file__).resolve().parent.parent
 PAPERS = ROOT / "papers"
 GENERATED = ROOT / "generated"
+QUESTIONS = ROOT / "questions.yaml"
 LINKED_DIRS = ["papers", "topics", "people", "proposal"]
 
 REQUIRED = ["id", "title", "authors", "year", "read", "relevance", "topics"]
@@ -63,6 +65,18 @@ def check(path: Path, meta: dict) -> list[str]:
         if setting.get(field) not in (True, False, None):
             errors.append(f"`setting.{field}` must be true, false or empty")
     return [f"{path.relative_to(ROOT)}: {error}" for error in errors]
+
+
+def question_errors(paper_ids: set[str]) -> list[str]:
+    errors = []
+    for q in yaml.safe_load(QUESTIONS.read_text()) or []:
+        for field in ("id", "short", "question", "answer", "papers"):
+            if not q.get(field):
+                errors.append(f"questions.yaml: `{q.get('id', '?')}` is missing `{field}`")
+        for pid in q.get("papers") or {}:
+            if pid not in paper_ids:
+                errors.append(f"questions.yaml: `{q.get('id')}` names unknown paper `{pid}`")
+    return errors
 
 
 def broken_links() -> list[str]:
@@ -131,6 +145,155 @@ def bibtex(papers: list[dict]) -> str:
     return header + "\n\n".join(entries) + "\n"
 
 
+# --- graph.json: papers, topics, skills and people as a network (for the website map) ---
+
+SKILLS = [  # canonical social skills from the Map fields, matched by keyword
+    ("negotiating", "Negotiating value", ["negotiat", "bargain"]),
+    ("cooperating", "Cooperating", ["cooperat", "coordinat", "collaborat"]),
+    ("competing", "Competing", ["compet"]),
+    ("persuading", "Persuading", ["persuading"]),
+    ("resisting", "Resisting persuasion", ["resisting"]),
+    ("deceiving", "Deceiving / detecting", ["decei", "deception", "lying"]),
+    ("secrets", "Keeping secrets", ["secret"]),
+    ("tom", "Theory of mind", ["theory of mind", "belief"]),
+]
+TRAININGS = [("prompting", "prompting"), ("SFT", "sft"), ("RL", "rl"), ("multi-agent", "multi-agent")]
+
+
+def sections(body: str) -> dict[str, str]:
+    parts = re.split(r"^## (.+)$", body, flags=re.M)
+    return {parts[i].strip(): parts[i + 1].strip() for i in range(1, len(parts) - 1, 2)}
+
+
+def map_fields(text: str) -> dict[str, str]:
+    fields = {}
+    for line in text.splitlines():
+        match = re.match(r"- ([^:]+):\s*(.*)", line)
+        if match:
+            fields[match.group(1).strip()] = match.group(2).strip()
+    return fields
+
+
+def plain(text: str) -> str:
+    text = re.sub(r"\[\[([^\]]+)\]\]", r"\1", text)
+    return re.sub(r"\*\*|`", "", text).strip()
+
+
+def first_bullets(text: str, n: int) -> list[str]:
+    bullets, current = [], None
+    for line in text.splitlines():
+        if line.startswith("- "):
+            if current:
+                bullets.append(current)
+            current = line[2:].strip()
+        elif current is not None and line.startswith("  "):
+            current += " " + line.strip()
+    if current:
+        bullets.append(current)
+    return [plain(b) for b in bullets[:n]]
+
+
+def claimed_items(text: str) -> list[str]:
+    """Split a Map-fields line into items, dropping asides and hedged or negated ones
+    ("keeping secrets only as a side measure", "no multi-agent")."""
+    text = text.lower()
+    text = re.sub(r"\bother \(([^()]*)\)", r"other: \1", text)  # "other (theory of mind)" counts
+    text = re.sub(r"\bno [^;,.]*", "", text)  # "no SFT/RL", "no multi-agent"
+    while re.search(r"\([^()]*\)", text):
+        text = re.sub(r"\([^()]*\)", "", text)
+    items = [i.strip() for i in re.split(r"[;,/]|\.\s|\bplus\b|\band\b", text)]
+    hedges = ("only as", "only if", "anecdot", "not ")
+    return [i for i in items if i and not i.startswith("no ") and not any(h in i for h in hedges)]
+
+
+def eval_class(fields: dict[str, str]) -> dict | None:
+    """Coarse, normalised classification of a benchmark from its Map fields (for the evals page).
+    None for notes without Map fields or marked "not a benchmark"."""
+    if not fields or "not a benchmark" in fields.get("Skills measured", "").lower():
+        return None
+    scoring = fields.get("Scoring", "").lower()
+    scoring_kind = ("judge" if scoring.startswith("llm judge") else "mixed" if scoring.startswith("mixed")
+                    else "rules" if scoring.startswith("rules") else "other")
+    opp = re.sub(r"\([^()]*\)", "", fields.get("Opponents", "").lower())
+    opponents = [name for name, words in [
+        ("scripted", ["scripted"]), ("LLM", ["llm"]), ("human", ["human"]),
+        ("solver", ["solver"]), ("trained agents", ["learned agent", "learned"]),
+    ] if any(w in opp for w in words)]
+    agents = fields.get("Agents", "").lower()
+    agents_kind = ("1" if agents.startswith("1") and "/" not in agents[:4]
+                   else "2" if agents.startswith("2") and not agents.startswith("2 to") and "many" not in agents[:12]
+                   else "many")
+    tests = fields.get("Tests", "").lower()
+    tests_kind = next((k for k in ("both", "propensity", "capability") if tests.startswith(k)), "not recorded")
+    code = fields.get("Code released", "")
+    url = re.search(r"https?://\S+", code)
+    return {"scoring": scoring_kind, "opponents": opponents, "agents": agents_kind, "tests": tests_kind,
+            "code": url.group(0).rstrip(".,;)") if url else None}
+
+
+def graph(papers: list[dict]) -> dict:
+    nodes, links = [], []
+    paper_ids = {m["id"] for m in papers}
+    topics = sorted({t for m in papers for t in m["topics"]})
+    for topic in topics:
+        page = ROOT / "topics" / f"{topic}.md"
+        title = page.read_text().splitlines()[0].lstrip("# ").strip() if page.exists() else (
+            topic.replace("-", " ").capitalize())
+        nodes.append({"id": f"topic:{topic}", "type": "topic", "label": title})
+    for key, label, _ in SKILLS:
+        nodes.append({"id": f"skill:{key}", "type": "skill", "label": label})
+    for meta in papers:
+        _, body = frontmatter(PAPERS / f"{meta['id']}.md")
+        sec = sections(body)
+        fields = map_fields(sec.get("Map fields", ""))
+        skill_items = claimed_items(fields.get("Skills measured", ""))
+        skills = [key for key, _, words in SKILLS if any(w in i for i in skill_items for w in words)]
+        training_items = claimed_items(fields.get("Training evaluated", ""))
+        training = [] if fields.get("Training evaluated", "").lower().startswith("none") else [
+            name for name, word in TRAININGS
+            if any(re.search(rf"\b{re.escape(word)}\b", i) for i in training_items)
+        ]
+        nodes.append({
+            "id": meta["id"], "type": "paper", "label": meta["title"],
+            "authors": meta["authors"], "year": meta["year"], "venue": meta.get("venue"),
+            "arxiv": meta.get("arxiv"), "url": meta.get("url"), "code": meta.get("code"),
+            "read": meta["read"], "relevance": meta["relevance"], "topics": meta["topics"],
+            "benchmark": eval_class(fields) is not None, "skills": skills, "training": training,
+            "transfer": fields.get("Transfer between skills measured", "").lower().startswith("yes"),
+            "question": plain(sec.get("Question", "")),
+            "findings": first_bullets(sec.get("Findings", ""), 3),
+            "map": {k: plain(v) for k, v in fields.items()},
+            "eval": eval_class(fields),
+        })
+        links += [{"source": meta["id"], "target": f"topic:{t}", "kind": "topic"} for t in meta["topics"]]
+        links += [{"source": meta["id"], "target": f"skill:{s}", "kind": "skill"} for s in skills]
+        cited = set(re.findall(r"\[\[([^\]]+)\]\]", body)) & paper_ids - {meta["id"]}
+        links += [{"source": meta["id"], "target": c, "kind": "cites"} for c in sorted(cited)]
+    for path in sorted((ROOT / "people").glob("*.md")):
+        text = path.read_text().split("## Outreach log")[0]  # outreach logs stay private
+        linked = sorted(set(re.findall(r"\[\[([^\]]+)\]\]", text)) & paper_ids)
+        if not linked:
+            continue
+        heading = text.splitlines()[0].lstrip("# ").strip()
+        name, _, place = heading.partition(" — ")
+        nodes.append({"id": f"person:{path.stem}", "type": "person", "label": name, "place": place})
+        links += [{"source": f"person:{path.stem}", "target": p, "kind": "person"} for p in linked]
+    # Everyday questions (questions.yaml): plain-language hubs for non-academic visitors.
+    for q in yaml.safe_load(QUESTIONS.read_text()) or []:
+        nodes.append({"id": f"question:{q['id']}", "type": "question", "label": q["question"],
+                      "short": q["short"], "answer": " ".join(q["answer"].split())})
+        links += [{"source": f"question:{q['id']}", "target": pid, "kind": "question",
+                   "plain": " ".join(text.split())} for pid, text in q["papers"].items()]
+    # undirected duplicates (a cites b and b cites a) collapse into one link
+    seen, unique = set(), []
+    for link in links:
+        key = tuple(sorted((link["source"], link["target"])))
+        if key not in seen:
+            seen.add(key)
+            unique.append(link)
+    return {"nodes": nodes, "links": unique}
+
+
 def main() -> None:
     papers, errors = [], []
     for path in sorted(PAPERS.glob("*.md")):
@@ -138,12 +301,14 @@ def main() -> None:
         errors += check(path, meta)
         papers.append(meta)
     errors += broken_links()
+    errors += question_errors({meta.get("id") for meta in papers})
     if errors:
         print("\n".join(errors))
         sys.exit(1)
     GENERATED.mkdir(exist_ok=True)
     (GENERATED / "matrix.md").write_text(matrix(papers))
     (GENERATED / "references.bib").write_text(bibtex(papers))
+    (GENERATED / "graph.json").write_text(json.dumps(graph(papers), indent=1, ensure_ascii=False) + "\n")
     unread = sum(meta["read"] != "full" for meta in papers)
     print(f"{len(papers)} papers, {unread} not yet read in full; generated/ rebuilt")
 

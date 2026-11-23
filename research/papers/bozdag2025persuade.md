@@ -130,3 +130,14 @@ misinformation claims, and model family/size? (pp. 1–2)
   scripted tactic seat really used the assigned tactic.
 - Domain split as a control: a condition where giving in is *correct* (like their subjective claims)
   so resistance can't be won by refusing everything.
+
+## Map fields
+- Skills measured: persuading (effectiveness), resisting persuasion (susceptibility), other: misinformation claims vs subjective claims
+- Scoring: mixed (persuadee's self-reported 1–5 agreement; human annotators and a GPT-4o judge as validity checks)
+- Agents: 2
+- Opponents: LLM (full round robin)
+- Tests: both (persuasion effectiveness; susceptibility as persuadee)
+- Training evaluated: none
+- Transfer between skills measured: no
+- Models tested: GPT-4o-mini, GPT-4o, GPT-4.1, GPT-4.1-mini, o4-mini, Claude 3 Opus, Claude 2, Claude 3 Haiku, Llama-3.1-8B, Llama-3.3-70B, Qwen-3-32B
+- Code released: https://beyzabozdag.github.io/PMIYC/
