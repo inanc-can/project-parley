@@ -108,3 +108,14 @@ measured by money actually handed over in a zero-sum game? (pp. 1–2)
   [[sadab2026receiver]]); cheap probes for screening agents.
 - Code victim replies for verification vs refusal vs budget disclosure as process measures.
 - Avoid: judge drawn from the player pool; Elo on n = 8 without CIs.
+
+## Map fields
+- Skills measured: persuading (extracting money as a salesperson), resisting persuasion (keeping lottery winnings)
+- Scoring: mixed (an LLM arbiter extracts unconditional handovers; rules compute the extraction ratio and Elo)
+- Agents: 2
+- Opponents: LLM (round robin, both roles)
+- Tests: capability
+- Training evaluated: none
+- Transfer between skills measured: no
+- Models tested: GPT-5.2, Llama 4 Maverick, DeepSeek V3.2, Grok 4.1 Fast, Llama 3.3 70B, Gemini 2.5 Flash, Qwen3 Next 80B, Mixtral 8×7B
+- Code released: none stated in the PDF

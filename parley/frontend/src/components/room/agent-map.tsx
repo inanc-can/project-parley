@@ -55,6 +55,7 @@ const RADIUS = 220;
 
 function seatModel(seat: Seat | null): string | null {
   if (!seat) return null;
+  if (seat.kind === "live") return `live · ${seat.client || "agent"}`;
   const m = seat.kind === "llm" ? seat.model : seat.kind === "team" ? seat.proposer_model : `scripted · ${seat.name}`;
   return m.split("/").pop() ?? m; // drop provider/org prefixes so it fits the node
 }

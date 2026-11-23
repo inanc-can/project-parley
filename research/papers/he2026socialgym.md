@@ -211,3 +211,14 @@ families? And can an inference-time method (a playbook written from self-play) i
 - Use the open engine (FSM + visibility config per game, no engine changes per game) as a base, and
   add what it lacks: absolute payoff/surplus scores, free-text negotiation with private values,
   propensity probes, and SFT/RL arms trained on one family and tested on all.
+
+## Map fields
+- Skills measured: negotiating value (Bargaining, Bohnanza trading, Sheriff bribes), cooperating (Stag Hunt, Public Goods, Battle of the Sexes), competing, persuading (Survivor, Dead Last), deceiving-detecting (bluffing and hidden-role games), other: theory of mind, strategic and probabilistic reasoning
+- Scoring: rules (rule-computed game scores → Bradley–Terry Elo; four cooperation games as pairwise win rates)
+- Agents: many (2–6 per game)
+- Opponents: LLM (round-robin cross-play, no self-play); a uniformly random player as anchor
+- Tests: capability
+- Training evaluated: prompting (SPaRTan self-play playbooks, training-free); no SFT or RL
+- Transfer between skills measured: yes, prompting only (playbooks written from the other games, (n−1)→1), three games, two models
+- Models tested: GPT-5-mini, GPT-4o, GPT-4o-mini, Gemma3-27B/12B/4B, Qwen3-32B, Qwen3-4B-Instruct-2507, Qwen2.5-3B, Qwen3-1.7B
+- Code released: https://github.com/Keyu-He/Social_Gym_Spartan

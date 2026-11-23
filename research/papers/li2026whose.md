@@ -86,3 +86,14 @@ distillation fix that without making it over-refuse? (pp. 1–2)
 - Integrity gate that rejects trajectories with silent API failures.
 - Reader-identity tags as a cheap defence baseline.
 - Held-out items written after training is frozen.
+
+## Map fields
+- Skills measured: keeping secrets (leakage of the principal's private facts), resisting persuasion (capitulation to pressure, flattery, invented urgency), other: principal loyalty, over-refusal of the principal's own requests
+- Scoring: mixed (deterministic leak probe plus two LLM judges)
+- Agents: many (3: principal, agent, counterparty)
+- Opponents: LLM (counterparty personas)
+- Tests: propensity (whether the agent leaks or gives in when not told to)
+- Training evaluated: prompting (loyalty scaffold) / SFT (per-turn SFT, DPO, per-token KL distillation) / RL (DAPO)
+- Transfer between skills measured: no (held-out items of the same benchmark only)
+- Models tested: 13 frontier models incl. Gemini-2.5-flash, Claude Opus, Claude Sonnet, GPT-5, GPT-5-mini, GLM-4.6, Qwen3.5-27B; Qwen3-8B and Llama-3.1-8B trained
+- Code released: https://github.com/19PINE-AI/principal-loyalty

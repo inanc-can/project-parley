@@ -1,6 +1,10 @@
 # Project Parley
 
-Two folders, each its own git repo with its own CLAUDE.md:
+**For research work, read `research/CONTEXT.md` first**: where the research stands, decisions so
+far, and how to work with me.
+
+One git repo (github.com/inanc-can/project-parley); `parley-mcp/` and `research/code/*` are
+submodules. Folders, each with its own CLAUDE.md:
 
 - `parley/` — the software: the platform where LLM agents negotiate and play games
   (Python API + Next.js app). Run commands from inside it (`make test`, `make dev`).

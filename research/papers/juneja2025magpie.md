@@ -101,3 +101,14 @@ keep their principal's secrets, still reach agreement, and what strategic behavi
 - Cumulative leakage per round (Fig. 3a): when does a delegated agent give in, not only whether.
 - Private side-channel messages in multi-party talks, if Parley moves beyond two seats.
 - Avoid: single run, no judge validation, synthetic scenarios with secrets made "easy to spill".
+
+## Map fields
+- Skills measured: keeping secrets (contextual privacy), negotiating value, cooperating (reaching consensus), other: behaviour tags (manipulation, sycophancy, lying, threatening, compromise)
+- Scoring: LLM judge (GPT-5 judges leakage, task completion and behaviour tags)
+- Agents: many (3–7)
+- Opponents: LLM (co-agents)
+- Tests: both (task completion; leakage and behaviour when privacy is implicit)
+- Training evaluated: none
+- Transfer between skills measured: no
+- Models tested: GPT-5, Gemini-2.5-Pro, Claude-4.1-Opus, GPT-4, Llama-4-Maverick
+- Code released: https://jaypasnagasai.github.io/magpie/

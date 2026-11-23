@@ -49,6 +49,12 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --animate-marquee: marquee 80s linear infinite;
+  @keyframes marquee {
+    to {
+      transform: translateX(-50%);
+    }
+  }
   @keyframes collapsible-down {
   from {
     height: 0;
@@ -176,3 +182,12 @@
 @custom-variant data-open (&:where([data-state="open"], [data-open]:not([data-open="false"])));
 
 @custom-variant data-closed (&:where([data-state="closed"], [data-closed]:not([data-closed="false"])));
+/* Landing pages (app/(site)): the editorial system, with balanced headings and no orphans. */
+@utility site-root {
+  & :is(h1, h2, h3) {
+    text-wrap: balance;
+  }
+  & p {
+    text-wrap: pretty;
+  }
+}

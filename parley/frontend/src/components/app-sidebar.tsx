@@ -89,7 +89,7 @@ function NewRoomGroup({ active }: { active: boolean }) {
             isActive={active}
             tooltip="New room"
             className={ITEM}
-            render={<Link href="/" onClick={close} />}
+            render={<Link href="/start" onClick={close} />}
           >
             <Plus />
             <span>New room</span>
@@ -107,7 +107,7 @@ function SidebarNav() {
 
   return (
     <>
-      <NewRoomGroup active={pathname === "/"} />
+      <NewRoomGroup active={pathname === "/start"} />
       {roomId && <RoomSteps roomId={roomId} summary={summaries.get(roomId)} />}
       <YourRooms activeId={roomId} summaries={summaries} />
     </>

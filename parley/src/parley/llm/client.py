@@ -26,9 +26,12 @@ class LLMResponse(BaseModel):
 def is_transient(e: Exception) -> bool:
     """Provider hiccups worth waiting out: overload, rate limits, timeouts, dropped
     connections. Featherless also answers an overloaded model with a 200 whose body has an
-    error object appended; LiteLLM reports that as an InternalServerError ("Extra data")."""
+    error object appended; LiteLLM reports that as an InternalServerError ("Extra data").
+    OpenRouter's passed-on 500s arrive as a plain APIError with the status code."""
     import litellm
 
+    if isinstance(e, litellm.APIError) and (getattr(e, "status_code", 0) or 0) >= 500:
+        return True
     return isinstance(
         e,
         litellm.InternalServerError
@@ -53,7 +56,7 @@ class LLMClient:
     async def complete(
         self,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         temperature: float = 0.7,
         max_tokens: int = 1000,
         seed: int = 0,

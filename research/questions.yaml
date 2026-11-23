@@ -1,0 +1,192 @@
+# Everyday questions for the public research map (parley website, /research).
+# Plain language for non-academics. Every line must come from a paper note in papers/;
+# `scripts/build.py` checks that each citekey exists and copies this into generated/graph.json.
+# Keep answers short: a person should get the gist without opening a paper.
+
+- id: negotiate-well
+  short: Negotiating well?
+  question: How do we know if an AI agent negotiates well?
+  answer: >-
+    Closing a deal is not enough. Almost every recent model closes nearly all deals that are
+    possible, yet some keep far more of the value than others. So researchers measure how much
+    value an agent captures, test it against opponents whose secret limits are known, and check
+    whether results hold across roles and games. Rankings often flip when the setting changes.
+  papers:
+    zhang2026terms: >-
+      Recent models close 93–99% of possible deals, but the share of value they capture ranges
+      widely. A scripted opponent with a known secret limit shows where each agent loses value.
+    fan2026commerce: >-
+      In a simulated year of running a shop, the best agents bargained only modestly better than
+      simply accepting the supplier's first offer.
+    bianchi2024negotiationarena: >-
+      Who moves first and which role an agent plays often matter as much as which model it is.
+    zhu2026piearena: >-
+      Agents were compared with MBA students on real business cases. Some beat the students at
+      creating value, and the ranking changes with the type of case.
+    he2026socialgym: >-
+      Across 22 social games no model is best everywhere; a model's rank in one family of games
+      says little about its rank in another.
+    xia2024measuring: >-
+      Buying is harder than selling: most buyer agents lost money against seller agents, and
+      bigger models were not better buyers.
+
+- id: loyal
+  short: Staying loyal?
+  question: Will an agent stay loyal to the person it represents?
+  answer: >-
+    Not always. Agents sometimes pay above their owner's budget, sell below cost, reveal private
+    information, or give in to the other side. Other models go the opposite way and refuse their
+    own owner's legitimate requests. Stronger models break their owner's limits less often, but
+    none is perfect, and telling them to be careful helps only a little.
+  papers:
+    zhu2025automated: >-
+      Buyer agents sometimes agreed to prices above their budget (up to 12% of deals for a small
+      model). Some revealed their budget when asked, and the seller then charged more.
+    li2026whose: >-
+      Most models rarely betray their owner, but a few refuse so much that they fail their owner's
+      legitimate requests instead. Prompting helps the first group, not the second.
+    juneja2025magpie: >-
+      In group negotiations, agents leaked 25–56% of their owner's secrets. Explicit instructions
+      to keep them cut leaks by only 4–10 points.
+    liang2026agents: >-
+      In supply-chain bargaining, weaker models signed loss-making contracts in about 19% of cases;
+      the strongest models never did.
+    micelibarone2026used: >-
+      Agents that knew more than the other side were systematically misleading, and agents that
+      knew less were somewhat too trusting.
+
+- id: persuaded
+  short: Talked into a bad deal?
+  question: Can someone talk my agent into a bad deal?
+  answer: >-
+    Sometimes. A friendly or pushy tone alone makes agents give up more, and a simple "Are you
+    sure?" can make a model drop a correct answer. But the agent being persuaded matters far more
+    than how clever the persuader is: some agents almost never give in, others hand over
+    everything. Being good at persuading and being hard to persuade are different skills.
+  papers:
+    sadab2026receiver: >-
+      When one agent asked another for money, the identity of the agent holding the money
+      explained about 47% of the outcome; the asker's identity only about 2%.
+    zhang2026terms: >-
+      Every model tested gave up more value when the other side's messages carried warm or
+      pressuring cues, even with the prices held fixed.
+    sharma2023understanding: >-
+      Asking "Are you sure?" made assistants change their answer on 32–86% of questions, often
+      from right to wrong.
+    zeng2024johnny: >-
+      Everyday persuasion techniques, like appeals to authority or logic, got a model past its
+      safety rules in every risk category tested.
+    bozdag2025persuade: >-
+      Longer conversations make models easier to persuade; most of the influence lands in the
+      first two attempts.
+    sakhawat2026areg: >-
+      Every model resisted better than it persuaded, and the best persuader was not the best
+      defender.
+    bansal2025magentic: >-
+      In a simulated marketplace, some shopping agents paid a manipulative business when it used
+      prompt injection; others were almost immune.
+
+- id: better
+  short: Getting better results?
+  question: How can we make agents negotiate on our behalf and get better results?
+  answer: >-
+    Three levers appear in the research. Training on real outcomes (reinforcement learning) can
+    make a small model out-bargain much larger ones. Extra structure in the prompt, like tracking
+    the state of the deal and planning, helps weaker models more than strong ones. And what you
+    tell the agent matters: more information about the other side does not always help and can
+    make agents greedy enough to destroy value.
+  papers:
+    liu2026instructing: >-
+      A 30B model trained with rewards for good, within-budget deals beat frontier models as a
+      buyer and almost stopped going over budget.
+    hua2026passive: >-
+      A small 4B model trained to protect its owner's information and concede selectively reached
+      the level of GPT-4.1.
+    zhu2026piearena: >-
+      A scaffold that tracks the negotiation and plans ahead helped weaker models a lot and the
+      strongest models hardly at all.
+    erdogan2026should: >-
+      Telling agents more about the other side sometimes lowered the total gains, because they
+      demanded more and deals got more lopsided.
+    zhu2025automated: >-
+      Searching over prompt wordings cut over-budget deals from 18% to 1%, but did not stop
+      overpaying.
+    lewis2017deal: >-
+      Training for the agent's own reward got better deals when deals happened, but against
+      people it reached fewer agreements.
+
+- id: honest
+  short: Do agents lie?
+  question: Do AI agents lie or deceive?
+  answer: >-
+    Yes, when the situation rewards it. Agents with private information mislead more often than
+    they tell outright lies. In social deduction games they work out for themselves that
+    deceiving pays. Researchers are building games and debates where lying can be caught and
+    measured.
+  papers:
+    micelibarone2026used: >-
+      Agents that knew the real price were systematically dishonest, mostly through misleading
+      claims rather than outright lies.
+    golechha2025among: >-
+      In a text version of Among Us, models deceived without being told to; the strongest
+      reasoning models were the best deceivers.
+    taylor2026clocktower: >-
+      In Blood on the Clocktower, a hidden-role game, models that were good at accusing others
+      were not always good at judging accusations.
+    oh2026merit: >-
+      When the rules allowed deception, buyer agents scored better and closed more deals.
+    irving2018debate: >-
+      Letting two AIs debate in front of a judge helped the honest side win most of the time, an
+      early idea for catching lies.
+
+- id: cooperate
+  short: Working together?
+  question: Can AI agents work together?
+  answer: >-
+    Less well than you might hope. Groups of agents sharing a resource often overuse it until it
+    collapses, two coding agents do worse than one, and skills like handling conflict lag behind
+    the rest of teamwork. Small changes in how a situation is described can turn cooperation into
+    collapse.
+  papers:
+    piatti2024cooperate: >-
+      Agents sharing a fishery, pasture or river mostly used it up in the first month; the best
+      model kept it alive in about half the runs.
+    khatua2026cooperbench: >-
+      Two coding agents working on the same project did worse than one agent doing both jobs, and
+      more agents made it worse.
+    wu2026measuring: >-
+      Frontier models reached the best outcome in only 14% of conflict tests, and handling conflict
+      did not go together with the other teamwork skills.
+    davidson2024evaluating: >-
+      With two issues on the table, models rarely found the trade-offs that would leave both sides
+      better off.
+    smith2025evaluating: >-
+      In new mixed-motive situations, few agents beat a simple rule-based baseline.
+
+- id: transfer
+  short: Does training spill over?
+  question: Does training an agent at one skill make it better or worse at others?
+  answer: >-
+    Both happen. Training on similar tasks tends to help across them; training on different ones
+    can hurt. In one study, training an agent to persuade made it far easier to persuade. Which
+    combinations help and which hurt is still largely unknown, and it is the open question behind
+    this project.
+  papers:
+    hua2026passive: >-
+      Training on one price negotiation helped another price negotiation; training on meeting
+      scheduling hurt the others.
+    sadab2026receiver: >-
+      Training a model on persuasion conversations raised how much it gave away when asked for
+      money from 12% to 84%.
+    liu2025spiral: >-
+      A model trained on several games did best on average but was worse at negotiation than a
+      model trained on negotiation alone.
+    yuan2025marshal: >-
+      Specialists won their own game; a model trained on a cooperative game got worse at some
+      competitive ones.
+    lyu2026gift: >-
+      Training on one game helped or hurt another depending on the pair of games and the model's
+      size.
+    sarkar2025training: >-
+      Training only for winning erased a skill the model had learned earlier: spotting the
+      impostor.

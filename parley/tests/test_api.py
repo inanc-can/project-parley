@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from parley.api.app import create_app
+from parley.core.spec import GameSpec
 from parley.llm.client import LLMClient, LLMResponse
 from parley.storage import Store
 from parley.templates import buy_sell
@@ -279,3 +280,89 @@ def test_assistant_cannot_drop_the_reservations_surplus_scoring_needs(tmp_path):
     assert use["ok"] and not bad["ok"] and "reservation" in bad["result"]
     spec = api.get(f"/api/rooms/{r['room_id']}", headers=h(r["token"])).json()["game"]["spec"]
     assert spec["roles"][0]["private_values"]["reservation"] == 8000  # template untouched
+
+
+class FileAwareClient(FakeClient):
+    """Describes images and summarises files; records what each agent prompt contained."""
+
+    def __init__(self):
+        super().__init__()
+        self.prompts: list[str] = []
+
+    async def _call(self, model, messages, temperature, max_tokens, **kw):
+        content = messages[-1]["content"]
+        if isinstance(content, list):  # an image to describe
+            assert content[1]["image_url"]["url"].startswith("data:image/png;base64,")
+            return LLMResponse(text="A chart: revenue 4.2M in 2025.", model=model)
+        if "You prepare the shared context" in content:
+            return LLMResponse(text="Revenue was 4.2M in 2025.", model=model)
+        self.prompts.append(messages[0]["content"])
+        return await super()._call(model, messages, temperature, max_tokens, **kw)
+
+
+def b64(data: bytes) -> str:
+    import base64
+
+    return base64.b64encode(data).decode()
+
+
+def test_shared_files_are_converted_saved_and_read_by_agents(tmp_path):
+    client = FileAwareClient()
+    api = TestClient(create_app(Store(tmp_path / "db.sqlite"), client))
+    room = api.post("/api/rooms", json={"name": "Ann"}).json()
+    rid, tok = room["room_id"], room["token"]
+
+    csv = api.post(
+        f"/api/rooms/{rid}/files",
+        json={"name": "figures.csv", "mime": "text/csv", "data": b64(b"year,revenue\n2025,4.2M\n")},
+        headers=h(tok),
+    )
+    assert csv.status_code == 200, csv.text
+    assert "4.2M" in csv.json()["text"] and len(csv.json()["sha256"]) == 64
+    img = api.post(
+        f"/api/rooms/{rid}/files",
+        json={"name": "chart.png", "mime": "image/png", "data": b64(b"\x89PNG fake")},
+        headers=h(tok),
+    ).json()
+    assert img["text"] == "A chart: revenue 4.2M in 2025."
+
+    summary = api.post(
+        f"/api/rooms/{rid}/files/summary", json={"files": [csv.json()]}, headers=h(tok)
+    )
+    assert summary.json() == {"text": "Revenue was 4.2M in 2025."}
+
+    spec = GameSpec.model_validate(buy_sell().model_dump() | {"files": [csv.json(), img]})
+    put = api.put(f"/api/rooms/{rid}/game", json=spec.model_dump(), headers=h(tok))
+    assert put.status_code == 200
+    saved = api.get(f"/api/rooms/{rid}", headers=h(tok)).json()["game"]["spec"]
+    assert [f["name"] for f in saved["files"]] == ["figures.csv", "chart.png"]
+    assert "### chart.png\nA chart" in spec.full_context()
+
+
+def test_file_errors_are_explained(api):
+    room = api.post("/api/rooms", json={"name": "Ann"}).json()
+    rid, tok = room["room_id"], room["token"]
+    url = f"/api/rooms/{rid}/files"
+    empty = api.post(url, json={"name": "a.txt", "data": ""}, headers=h(tok))
+    assert empty.status_code == 400 and "empty" in empty.json()["detail"]
+    assert api.post(url, json={"name": "a.txt", "data": "%%"}, headers=h(tok)).status_code == 400
+    stranger = api.post(url, json={"name": "a.txt", "data": b64(b"hi")})
+    assert stranger.status_code in (401, 403)
+
+
+def test_research_writes_up_web_results_for_the_shared_context(tmp_path):
+    class WebClient(FakeClient):
+        async def _call(self, model, messages, temperature, max_tokens, **kw):
+            assert model.endswith(":online")
+            assert "Topic to research: PET resin prices" in messages[0]["content"]
+            assert "Two firms renew a contract." in messages[0]["content"]
+            return LLMResponse(text="Prices rose 11% [src](https://example.com).", model=model)
+
+    api = TestClient(create_app(Store(tmp_path / "db.sqlite"), WebClient()))
+    room = api.post("/api/rooms", json={"name": "Ann"}).json()
+    url = f"/api/rooms/{room['room_id']}/research"
+    body = {"topic": "PET resin prices", "context": "Two firms renew a contract."}
+    r = api.post(url, json=body, headers=h(room["token"]))
+    assert r.json() == {"text": "Prices rose 11% [src](https://example.com)."}
+    blank = api.post(url, json={"topic": "  "}, headers=h(room["token"]))
+    assert blank.status_code == 400

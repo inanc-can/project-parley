@@ -98,3 +98,14 @@ they fail?
 - Require agreements to be semantic, not just spatial: values, defaults and interfaces, not
   only line ranges (App. I's one missing sentence).
 - Code and data: https://cooperbench.com.
+
+## Map fields
+- Skills measured: cooperating (two agents implementing overlapping features in one codebase, coordinating by chat), other: software engineering
+- Scoring: rules (merge the two patches, run both test sets); GPT-5 judge only for the failure taxonomy
+- Agents: 2 (2–4 in the scaling test)
+- Opponents: LLM (partner is the same model)
+- Tests: capability
+- Training evaluated: none
+- Transfer between skills measured: no
+- Models tested: GPT-5, Claude Sonnet 4.5, MiniMax-M2, Qwen3-Coder-30B-A3B, Qwen3-30B-A3B-Instruct
+- Code released: not recorded in the note

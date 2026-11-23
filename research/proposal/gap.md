@@ -120,3 +120,21 @@ weakly, a method exists that improves many directions without trading one for an
   high while undercutting; fabricated evidence). No cross-skill transfer tested.
 - 2026-11-15 · [[lupu2025decrypto]] (read: partial) · a theory-of-mind fine-tuned model is worse
   than its base at interactive ToM (Table 1, p. 8): specialised social training did not carry over.
+- 2026-11-20 · [[liu2024dellma]], [[qiu2025bayesian]] (read: partial) · **candidate skill for the
+  transfer study: acting on likelihoods.** Outside negotiation, LLMs produce fairly calibrated
+  forecasts but don't use them to decide (DeLLMa: plain prompting below random on large choice
+  sets; a posterior in the prompt doesn't help), and barely update beliefs about a user over rounds
+  (Qiu et al.). Fine-tuning on a Bayesian model's guesses fixes much of it and **transfers** to
+  hotel and web-shopping tasks (+29.4 and +18.6 points vs +16.7 and +7.1 for oracle teaching,
+  Supp. G). Matches [[zhang2026terms]]; untested against a strategic counterpart.
+- 2026-11-20 · [[kadavath2022mostly]], [[lin2022teaching]], [[tian2023just]], [[xiong2023llms]],
+  [[kalai2025hallucinate]] · **background on calibration.** Self-knowledge transfers across tasks
+  in ranking but not calibration; RLHF and 0–1 rewards shift uncertainty behaviour, a training
+  side effect of the kind the transfer question is about.
+- 2026-11-23 · [[liu2026paying]] (read: full) · **supports the deployment motivation; outside the
+  social domain.** Single-agent RL on one environment raises in-domain success and lowers success
+  on the other three (Table 2, p. 6). Structure (state richness, planning complexity), not realism,
+  predicts which training domain preserves the others (Table 3, p. 6); adding irrelevant text to
+  states raises OOD success by up to +42.5% (Table 5, p. 9); SFT warm-up protects covered domains
+  but makes an uncovered one fragile (Table 6, p. 10); disabling reasoning collapses OOD (Table 7,
+  p. 11). No multi-agent or social tasks, so transfer across social skills stays open.
